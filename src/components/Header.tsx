@@ -23,7 +23,7 @@ export const Header: React.FC<HeaderProps> = ({
   role,
 }) => {
   const [audioOn, setAudioOn] = useState(isAudioEnabled());
-  const [backendMode, setBackendMode] = useState<'supabase' | 'demo'>('demo');
+  const [backendMode, setBackendMode] = useState<'server' | 'supabase' | 'demo'>('server');
 
   useEffect(() => {
     setBackendMode(getActiveBackendMode());
@@ -86,13 +86,17 @@ export const Header: React.FC<HeaderProps> = ({
           className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition border ${
             backendMode === 'supabase'
               ? 'bg-emerald-950/60 text-emerald-300 border-emerald-500/30 hover:bg-emerald-900/60'
+              : backendMode === 'server'
+              ? 'bg-indigo-950/60 text-indigo-300 border-indigo-500/30 hover:bg-indigo-900/60'
               : 'bg-amber-950/60 text-amber-300 border-amber-500/30 hover:bg-amber-900/60'
           }`}
-          title="Configure Supabase Database or SQL Schema"
+          title="Configure Supabase Database or Real-Time Multi-Device Sync"
           id="btn-backend-indicator"
         >
           <Database className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline">{backendMode === 'supabase' ? 'Supabase Connected' : 'Sandbox Mode'}</span>
+          <span className="hidden sm:inline">
+            {backendMode === 'supabase' ? 'Supabase Connected' : backendMode === 'server' ? 'Live Cross-Device' : 'Demo Sandbox'}
+          </span>
         </button>
 
         {/* Presenter Mode Toggle for Host */}

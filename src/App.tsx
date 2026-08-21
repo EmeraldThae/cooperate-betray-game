@@ -39,6 +39,21 @@ export default function App() {
   const [rulesOpen, setRulesOpen] = useState(false);
   const [setupOpen, setSetupOpen] = useState(false);
   const [isPresenter, setIsPresenter] = useState(false);
+  const [joinCodeParam, setJoinCodeParam] = useState<string>('');
+
+  // Check URL query params for auto-join (e.g. ?code=TB-XXXXX or ?join=TB-XXXXX)
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const urlCode = params.get('code') || params.get('join') || params.get('room');
+      if (urlCode) {
+        setJoinCodeParam(urlCode.trim());
+        setView('join');
+      }
+    } catch {
+      // Ignore URL parsing failure
+    }
+  }, []);
 
   // Restore session on mount
   useEffect(() => {
@@ -254,6 +269,7 @@ export default function App() {
 
         {view === 'join' && (
           <JoinGame
+            initialCode={joinCodeParam}
             onGameJoined={handleGameJoined}
             onBack={() => setView('home')}
           />

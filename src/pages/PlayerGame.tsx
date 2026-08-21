@@ -56,7 +56,7 @@ export const PlayerGame: React.FC<PlayerGameProps> = ({
     playSound('submit');
 
     try {
-      await GameService.submitDecision(currentRound.id, player.id, choice);
+      await GameService.submitDecision(currentRound.id, player.id, choice, game.id);
       if (onRefresh) onRefresh();
     } catch (e) {
       console.error('Failed to submit decision:', e);

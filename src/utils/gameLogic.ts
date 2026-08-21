@@ -37,18 +37,18 @@ export function validatePlayerName(name: string): { valid: boolean; error?: stri
 }
 
 export function validateGameCode(code: string): { valid: boolean; formatted: string; error?: string } {
-  let cleaned = code.toUpperCase().trim();
-  if (!cleaned.startsWith('TB-')) {
-    if (cleaned.startsWith('TB')) {
-      cleaned = 'TB-' + cleaned.substring(2);
-    } else {
-      cleaned = 'TB-' + cleaned;
-    }
+  if (!code || typeof code !== 'string') {
+    return { valid: false, formatted: '', error: 'Please enter a Game Code.' };
   }
-  if (cleaned.length < 6) {
-    return { valid: false, formatted: cleaned, error: 'Please enter a valid Game Code (e.g. TB-7K4P9).' };
+  let raw = code.toUpperCase().replace(/[\s\-_]+/g, '').trim();
+  if (raw.startsWith('TB')) {
+    raw = raw.substring(2);
   }
-  return { valid: true, formatted: cleaned };
+  if (raw.length < 3) {
+    return { valid: false, formatted: `TB-${raw}`, error: 'Please enter a valid Game Code (e.g. TB-7K4P9).' };
+  }
+  const formatted = `TB-${raw}`;
+  return { valid: true, formatted };
 }
 
 /**

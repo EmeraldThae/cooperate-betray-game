@@ -1,7 +1,22 @@
 import React, { useState } from 'react';
 import { Game, Player } from '../types';
 import { PlayerList } from '../components/PlayerList';
-import { Copy, Check, Play, Users, Clock, ShieldAlert, Sparkles, RefreshCw, Shuffle, Dices, UserPlus, Swords } from 'lucide-react';
+import {
+  Copy,
+  Check,
+  Play,
+  Users,
+  Clock,
+  ShieldAlert,
+  Sparkles,
+  RefreshCw,
+  Shuffle,
+  Dices,
+  Swords,
+  QrCode,
+  Smartphone,
+  ExternalLink,
+} from 'lucide-react';
 import { GameService } from '../supabase/serviceAdapter';
 import { playSound } from '../utils/audio';
 
@@ -29,16 +44,31 @@ export const Lobby: React.FC<LobbyProps> = ({
   onStartGame,
   onRefresh,
 }) => {
-  const [copied, setCopied] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [showQrCode, setShowQrCode] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
   const [isRandomizing, setIsRandomizing] = useState(false);
   const [pairings, setPairings] = useState<Array<[Player, Player]>>([]);
 
+  const getJoinUrl = () => {
+    if (typeof window === 'undefined') return '';
+    return `${window.location.origin}/?code=${encodeURIComponent(game.game_code)}`;
+  };
+
   const handleCopyCode = () => {
     navigator.clipboard.writeText(game.game_code);
-    setCopied(true);
+    setCopiedCode(true);
     playSound('click');
-    setTimeout(() => setCopied(false), 2500);
+    setTimeout(() => setCopiedCode(false), 2500);
+  };
+
+  const handleCopyLink = () => {
+    const url = getJoinUrl();
+    navigator.clipboard.writeText(url);
+    setCopiedLink(true);
+    playSound('click');
+    setTimeout(() => setCopiedLink(false), 2500);
   };
 
   const handleStart = async () => {
@@ -95,35 +125,83 @@ export const Lobby: React.FC<LobbyProps> = ({
 
   const isHost = role === 'host';
   const canStart = players.length >= 2;
+  const joinUrl = getJoinUrl();
+  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(joinUrl)}&bgcolor=0f172a&color=38bdf8`;
 
   return (
     <div className="w-full max-w-4xl mx-auto px-4 py-8 space-y-8">
       {/* Game Code Announcement Banner */}
-      <div className="p-6 md:p-8 rounded-3xl bg-gradient-to-b from-slate-900 to-slate-950 border border-slate-800 shadow-2xl text-center space-y-4 relative overflow-hidden">
+      <div className="p-6 md:p-8 rounded-3xl bg-gradient-to-b from-slate-900 to-slate-950 border border-slate-800 shadow-2xl text-center space-y-5 relative overflow-hidden">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800 border border-slate-700 text-xs font-semibold text-slate-300">
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span>ROOM LOBBY ACTIVE</span>
+          <span>ROOM LOBBY ACTIVE • CROSS-DEVICE LIVE</span>
         </div>
 
         <div>
           <div className="text-xs uppercase tracking-widest font-bold text-slate-400 mb-1">
-            Share this Game Code with Participants
+            Share this Game Code or Scan with Mobile Phone
           </div>
-          <div className="flex items-center justify-center gap-3">
+          <div className="flex flex-wrap items-center justify-center gap-3">
             <span className="font-mono text-4xl sm:text-5xl md:text-6xl font-black text-amber-400 tracking-wider">
               {game.game_code}
             </span>
-            <button
-              onClick={handleCopyCode}
-              className="p-3 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 transition active:scale-95 flex items-center gap-1.5 text-xs font-bold"
-              title="Copy Room Code"
-              id="btn-copy-room-code"
-            >
-              {copied ? <Check className="w-5 h-5 text-emerald-400" /> : <Copy className="w-5 h-5" />}
-              <span className="hidden sm:inline">{copied ? 'Copied' : 'Copy'}</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleCopyCode}
+                className="p-3 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 transition active:scale-95 flex items-center gap-1.5 text-xs font-bold cursor-pointer"
+                title="Copy Room Code"
+                id="btn-copy-room-code"
+              >
+                {copiedCode ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                <span>{copiedCode ? 'Code Copied' : 'Copy Code'}</span>
+              </button>
+
+              <button
+                onClick={handleCopyLink}
+                className="p-3 rounded-2xl bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 transition active:scale-95 flex items-center gap-1.5 text-xs font-bold cursor-pointer"
+                title="Copy Direct Join Link"
+                id="btn-copy-join-link"
+              >
+                {copiedLink ? <Check className="w-4 h-4 text-emerald-400" /> : <ExternalLink className="w-4 h-4" />}
+                <span>{copiedLink ? 'Link Copied!' : 'Copy Mobile Link'}</span>
+              </button>
+
+              <button
+                onClick={() => setShowQrCode(!showQrCode)}
+                className={`p-3 rounded-2xl border transition active:scale-95 flex items-center gap-1.5 text-xs font-bold cursor-pointer ${
+                  showQrCode
+                    ? 'bg-amber-500/20 border-amber-500/50 text-amber-300'
+                    : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200'
+                }`}
+                title="Toggle QR Code for Mobile"
+                id="btn-toggle-qr-code"
+              >
+                <QrCode className="w-4 h-4 text-amber-400" />
+                <span>{showQrCode ? 'Hide QR' : 'Mobile QR'}</span>
+              </button>
+            </div>
           </div>
         </div>
+
+        {/* Expandable Mobile QR Code Card */}
+        {showQrCode && (
+          <div className="pt-3 pb-2 max-w-sm mx-auto flex flex-col items-center justify-center p-4 rounded-2xl bg-slate-950 border border-indigo-500/40 shadow-xl space-y-3 animate-in fade-in zoom-in duration-200">
+            <div className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+              <Smartphone className="w-4 h-4 text-emerald-400" />
+              <span>Scan to Join Instantly on Mobile Phone</span>
+            </div>
+            <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-700 shadow-inner">
+              <img
+                src={qrCodeUrl}
+                alt="Room Join QR Code"
+                className="w-44 h-44 rounded-lg object-contain"
+              />
+            </div>
+            <p className="text-[11px] text-slate-400">
+              Open your phone camera to open the game with Code <span className="font-mono text-amber-400 font-bold">{game.game_code}</span> automatically loaded.
+            </p>
+          </div>
+        )}
 
         {/* Room configuration summary */}
         <div className="flex flex-wrap items-center justify-center gap-4 text-xs text-slate-400 pt-2 border-t border-slate-800/80">
@@ -253,7 +331,7 @@ export const Lobby: React.FC<LobbyProps> = ({
                   <button
                     onClick={handleRandomTwoPlayerSetup}
                     disabled={isRandomizing}
-                    className="w-full py-3 px-4 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs font-bold flex items-center justify-center gap-2 transition active:scale-95"
+                    className="w-full py-3 px-4 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs font-bold flex items-center justify-center gap-2 transition active:scale-95 cursor-pointer"
                     id="btn-random-2p-setup"
                   >
                     {isRandomizing ? (
@@ -273,7 +351,7 @@ export const Lobby: React.FC<LobbyProps> = ({
                 <button
                   onClick={handleStart}
                   disabled={!canStart || isStarting}
-                  className="w-full py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-base shadow-xl shadow-indigo-600/30 flex items-center justify-center gap-2 transition disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
+                  className="w-full py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-base shadow-xl shadow-indigo-600/30 flex items-center justify-center gap-2 transition disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 cursor-pointer"
                   id="btn-host-start-game"
                 >
                   {isStarting ? (
@@ -297,7 +375,7 @@ export const Lobby: React.FC<LobbyProps> = ({
                 <div>
                   <h4 className="font-bold text-white text-base">Ready & Waiting</h4>
                   <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                    Waiting for the Host to start the game. Your screen will transition automatically once the round starts.
+                    Waiting for the Host to start the game. Your mobile or desktop screen will transition automatically once the round starts.
                   </p>
                 </div>
               </div>

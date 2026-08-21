@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { LogIn, ArrowLeft, RefreshCw, AlertCircle, Sparkles, User, Hash } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { LogIn, ArrowLeft, RefreshCw, AlertCircle, Sparkles, User, Hash, Smartphone } from 'lucide-react';
 import { GameService } from '../supabase/serviceAdapter';
 import { AVATAR_OPTIONS, validateGameCode, validatePlayerName } from '../utils/gameLogic';
 import { Game, Player } from '../types';
@@ -18,9 +18,29 @@ export const JoinGame: React.FC<JoinGameProps> = ({ onGameJoined, onBack, initia
   const [isJoining, setIsJoining] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (initialCode) {
+      const parsed = validateGameCode(initialCode);
+      if (parsed.valid) {
+        setGameCode(parsed.formatted);
+      }
+    }
+  }, [initialCode]);
+
   const handleCodeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let val = e.target.value.toUpperCase();
-    setGameCode(val);
+    let raw = e.target.value;
+    // If user pasted a URL containing ?code= or ?join=
+    if (raw.includes('code=') || raw.includes('join=')) {
+      try {
+        const urlMatch = raw.match(/[?&](?:code|join)=([^&#]+)/i);
+        if (urlMatch && urlMatch[1]) {
+          raw = decodeURIComponent(urlMatch[1]);
+        }
+      } catch {
+        // Continue with raw text
+      }
+    }
+    setGameCode(raw.toUpperCase());
   };
 
   const handleJoin = async (e: React.FormEvent) => {
@@ -30,7 +50,7 @@ export const JoinGame: React.FC<JoinGameProps> = ({ onGameJoined, onBack, initia
     // Validate inputs
     const codeVal = validateGameCode(gameCode);
     if (!codeVal.valid) {
-      setError(codeVal.error || 'Please enter a valid Game Code.');
+      setError(codeVal.error || 'Please enter a valid Game Code (e.g. TB-7K4P9).');
       return;
     }
 
@@ -51,14 +71,14 @@ export const JoinGame: React.FC<JoinGameProps> = ({ onGameJoined, onBack, initia
       );
       onGameJoined(game, player, userId);
     } catch (err: any) {
-      setError(err?.message || 'Failed to join game room. Please check the code.');
+      setError(err?.message || 'Failed to join game room. Please verify the room code and try again.');
     } finally {
       setIsJoining(false);
     }
   };
 
   return (
-    <div className="w-full max-w-lg mx-auto px-4 py-8 md:py-12">
+    <div className="w-full max-w-lg mx-auto px-4 py-6 md:py-12">
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8 shadow-2xl space-y-6">
         {/* Top bar */}
         <div className="flex items-center justify-between border-b border-slate-800 pb-4">
@@ -68,18 +88,23 @@ export const JoinGame: React.FC<JoinGameProps> = ({ onGameJoined, onBack, initia
           >
             <ArrowLeft className="w-4 h-4" /> Back
           </button>
-          <div className="text-xs uppercase tracking-widest font-bold text-emerald-400">Player Access</div>
+          <div className="text-xs uppercase tracking-widest font-bold text-emerald-400 flex items-center gap-1">
+            <Smartphone className="w-3.5 h-3.5" /> Mobile & Desktop Ready
+          </div>
         </div>
 
         <div>
           <h2 className="text-2xl md:text-3xl font-black text-white">Join Training Room</h2>
-          <p className="text-sm text-slate-400 mt-1">Enter your room code to participate in the strategic rounds.</p>
+          <p className="text-sm text-slate-400 mt-1">Enter your room code to participate from your phone or laptop.</p>
         </div>
 
         {error && (
-          <div className="p-3.5 rounded-xl bg-rose-950/60 border border-rose-500/50 text-rose-300 text-xs flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 flex-shrink-0" />
-            <span>{error}</span>
+          <div className="p-3.5 rounded-xl bg-rose-950/70 border border-rose-500/50 text-rose-200 text-xs flex items-start gap-2.5">
+            <AlertCircle className="w-4 h-4 flex-shrink-0 text-rose-400 mt-0.5" />
+            <div className="space-y-0.5">
+              <span className="font-bold block">Could not connect to room:</span>
+              <span>{error}</span>
+            </div>
           </div>
         )}
 
@@ -94,12 +119,16 @@ export const JoinGame: React.FC<JoinGameProps> = ({ onGameJoined, onBack, initia
               type="text"
               value={gameCode}
               onChange={handleCodeChange}
-              placeholder="e.g. TB-7K4P9"
-              className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-700 text-amber-400 focus:outline-none focus:border-indigo-500 font-mono font-bold text-lg tracking-wider transition uppercase"
-              maxLength={12}
+              placeholder="e.g. TB-7K4P9 or 7K4P9"
+              className="w-full px-4 py-3.5 rounded-xl bg-slate-950 border border-slate-700 text-amber-400 focus:outline-none focus:border-indigo-500 font-mono font-black text-xl tracking-wider transition uppercase"
+              maxLength={16}
+              autoCapitalize="characters"
+              autoCorrect="off"
+              spellCheck={false}
               required
               id="input-join-game-code"
             />
+            <p className="text-[11px] text-slate-400 mt-1">You can type the 5 letters or the full TB- code.</p>
           </div>
 
           {/* Player Name */}
@@ -112,9 +141,11 @@ export const JoinGame: React.FC<JoinGameProps> = ({ onGameJoined, onBack, initia
               type="text"
               value={playerName}
               onChange={(e) => setPlayerName(e.target.value)}
-              placeholder="e.g. Thae, Aung, Director Smith"
-              className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-indigo-500 font-medium text-sm transition"
+              placeholder="e.g. Thae, Alex, Jordan"
+              className="w-full px-4 py-3.5 rounded-xl bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-indigo-500 font-medium text-base transition"
               maxLength={24}
+              autoCapitalize="words"
+              autoCorrect="off"
               required
               id="input-join-player-name"
             />
@@ -148,7 +179,7 @@ export const JoinGame: React.FC<JoinGameProps> = ({ onGameJoined, onBack, initia
           <button
             type="submit"
             disabled={isJoining}
-            className="w-full py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-base shadow-xl shadow-emerald-600/30 flex items-center justify-center gap-2 transition disabled:opacity-50 mt-2"
+            className="w-full py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-base shadow-xl shadow-emerald-600/30 flex items-center justify-center gap-2 transition disabled:opacity-50 mt-2 active:scale-95 cursor-pointer"
             id="btn-join-room-submit"
           >
             {isJoining ? (
