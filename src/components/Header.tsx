@@ -11,6 +11,7 @@ interface HeaderProps {
   onExitGame?: () => void;
   roomCode?: string;
   role?: 'host' | 'player' | null;
+  currentView?: string;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -21,6 +22,7 @@ export const Header: React.FC<HeaderProps> = ({
   onExitGame,
   roomCode,
   role,
+  currentView,
 }) => {
   const [audioOn, setAudioOn] = useState(isAudioEnabled());
   const [backendMode, setBackendMode] = useState<'server' | 'supabase' | 'demo'>('server');
@@ -38,18 +40,20 @@ export const Header: React.FC<HeaderProps> = ({
     setAudioOn(next);
   };
 
+  const isIndividualView = role === 'player' || currentView === 'join';
+
   return (
     <header className="w-full bg-slate-900/90 border-b border-slate-800 backdrop-blur-md sticky top-0 z-40 px-4 md:px-8 py-3.5 flex items-center justify-between">
       {/* Brand */}
       <div className="flex items-center gap-3">
         <div 
-          onClick={onExitGame}
-          className="flex items-center gap-2.5 cursor-pointer group"
+          onClick={isIndividualView ? undefined : onExitGame}
+          className={`flex items-center gap-2.5 ${isIndividualView ? 'cursor-default select-none' : 'cursor-pointer group'}`}
           id="brand-logo"
         >
           <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 via-purple-600 to-rose-600 p-0.5 shadow-lg shadow-indigo-500/20">
             <div className="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center">
-              <Shield className="w-5 h-5 text-indigo-400 group-hover:scale-110 transition" />
+              <Shield className={`w-5 h-5 text-indigo-400 ${isIndividualView ? '' : 'group-hover:scale-110'} transition`} />
             </div>
           </div>
           <div>
@@ -80,24 +84,26 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Action Controls */}
       <div className="flex items-center gap-2 md:gap-3">
-        {/* Backend Indicator */}
-        <button
-          onClick={onOpenSupabaseSetup}
-          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition border ${
-            backendMode === 'supabase'
-              ? 'bg-emerald-950/60 text-emerald-300 border-emerald-500/30 hover:bg-emerald-900/60'
-              : backendMode === 'server'
-              ? 'bg-indigo-950/60 text-indigo-300 border-indigo-500/30 hover:bg-indigo-900/60'
-              : 'bg-amber-950/60 text-amber-300 border-amber-500/30 hover:bg-amber-900/60'
-          }`}
-          title="Configure Supabase Database or Real-Time Multi-Device Sync"
-          id="btn-backend-indicator"
-        >
-          <Database className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline">
-            {backendMode === 'supabase' ? 'Supabase Connected' : backendMode === 'server' ? 'Live Cross-Device' : 'Demo Sandbox'}
-          </span>
-        </button>
+        {/* Backend Indicator (Hidden on Individual / Player Views) */}
+        {!isIndividualView && (
+          <button
+            onClick={onOpenSupabaseSetup}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition border ${
+              backendMode === 'supabase'
+                ? 'bg-emerald-950/60 text-emerald-300 border-emerald-500/30 hover:bg-emerald-900/60'
+                : backendMode === 'server'
+                ? 'bg-indigo-950/60 text-indigo-300 border-indigo-500/30 hover:bg-indigo-900/60'
+                : 'bg-amber-950/60 text-amber-300 border-amber-500/30 hover:bg-amber-900/60'
+            }`}
+            title="Configure Supabase Database or Real-Time Multi-Device Sync"
+            id="btn-backend-indicator"
+          >
+            <Database className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">
+              {backendMode === 'supabase' ? 'Supabase Connected' : backendMode === 'server' ? 'Live Cross-Device' : 'Demo Sandbox'}
+            </span>
+          </button>
+        )}
 
         {/* Presenter Mode Toggle for Host */}
         {role === 'host' && onTogglePresenter && (
@@ -115,15 +121,17 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         )}
 
-        {/* Sound Toggle */}
-        <button
-          onClick={toggleSound}
-          className="p-2 rounded-lg text-slate-300 hover:text-white bg-slate-800/80 border border-slate-700 hover:bg-slate-700 transition"
-          title={audioOn ? 'Mute Sound Effects' : 'Enable Sound Effects'}
-          id="btn-toggle-audio"
-        >
-          {audioOn ? <Volume2 className="w-4 h-4 text-emerald-400" /> : <VolumeX className="w-4 h-4 text-slate-500" />}
-        </button>
+        {/* Sound Toggle (Hidden on Individual / Player Views) */}
+        {!isIndividualView && (
+          <button
+            onClick={toggleSound}
+            className="p-2 rounded-lg text-slate-300 hover:text-white bg-slate-800/80 border border-slate-700 hover:bg-slate-700 transition"
+            title={audioOn ? 'Mute Sound Effects' : 'Enable Sound Effects'}
+            id="btn-toggle-audio"
+          >
+            {audioOn ? <Volume2 className="w-4 h-4 text-emerald-400" /> : <VolumeX className="w-4 h-4 text-slate-500" />}
+          </button>
+        )}
 
         {/* Rules Button */}
         <button
@@ -135,8 +143,8 @@ export const Header: React.FC<HeaderProps> = ({
           <span className="hidden sm:inline">Rules Matrix</span>
         </button>
 
-        {/* Exit Room if active */}
-        {onExitGame && (
+        {/* Exit Room if active and not an individual player */}
+        {onExitGame && !isIndividualView && (
           <button
             onClick={onExitGame}
             className="p-2 rounded-lg text-slate-400 hover:text-rose-400 bg-slate-800/60 border border-slate-700 hover:bg-rose-950/40 hover:border-rose-800/50 transition"

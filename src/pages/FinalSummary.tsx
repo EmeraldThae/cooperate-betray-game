@@ -1,7 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import confetti from 'canvas-confetti';
 import { Game, Player, Decision, Round } from '../types';
-import { calculateGameStatistics, calculateGroupTournamentAnalysis } from '../utils/gameLogic';
+import {
+  calculateGameStatistics,
+  calculateGroupTournamentAnalysis,
+  calculateIndividualPlayerAnalysis,
+} from '../utils/gameLogic';
 import {
   Trophy,
   Award,
@@ -14,11 +18,12 @@ import {
   Sparkles,
   Layers,
   Swords,
-  ChevronRight,
   Filter,
   CheckCircle2,
   AlertTriangle,
   Handshake,
+  Crown,
+  Home,
 } from 'lucide-react';
 import { Leaderboard } from '../components/Leaderboard';
 import { playSound } from '../utils/audio';
@@ -44,11 +49,16 @@ export const FinalSummary: React.FC<FinalSummaryProps> = ({
   onResetGame,
   onHome,
 }) => {
-  const [activeTab, setActiveTab] = useState<'individual' | 'group' | 'dynamics' | 'debrief'>('individual');
+  const [activeHostTab, setActiveHostTab] = useState<'standings' | 'all_pairs' | 'dynamics' | 'debrief'>('standings');
   const [selectedRoundFilter, setSelectedRoundFilter] = useState<number | 'all'>('all');
 
+  // Calculations for Host (full group) vs Individual Player (strictly 1v1)
   const stats = calculateGameStatistics(game, players, allDecisions);
   const groupAnalysis = calculateGroupTournamentAnalysis(game, players, allRounds, allDecisions);
+
+  const playerAnalysis = currentPlayerId
+    ? calculateIndividualPlayerAnalysis(currentPlayerId, game, players, allRounds, allDecisions)
+    : null;
 
   useEffect(() => {
     playSound('victory');
@@ -64,8 +74,8 @@ export const FinalSummary: React.FC<FinalSummaryProps> = ({
   const handleExportCsv = () => {
     const sorted = [...players].sort((a, b) => b.score - a.score);
     
-    // 1. Individual Standings Section
-    let csv = '=== INDIVIDUAL PLAYER STANDINGS ===\n';
+    // 1. Group Standings Section
+    let csv = '=== GROUP TOURNAMENT STANDINGS ===\n';
     csv += 'Rank,Player Name,Total Score,Status\n';
     sorted.forEach((p, idx) => {
       csv += `${idx + 1},"${p.player_name}",${p.score},${p.status}\n`;
@@ -92,11 +102,11 @@ export const FinalSummary: React.FC<FinalSummaryProps> = ({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `Cooperate_Betray_${game.game_code}_Full_Tournament_Report.csv`;
+    link.download = `Cooperate_Betray_${game.game_code}_Tournament_Report.csv`;
     link.click();
   };
 
-  // Filtered round numbers for group view
+  // Filtered round numbers for host group view
   const roundNumbers = Object.keys(groupAnalysis.roundMatches)
     .map(Number)
     .sort((a, b) => a - b);
@@ -105,34 +115,432 @@ export const FinalSummary: React.FC<FinalSummaryProps> = ({
     ? roundNumbers
     : roundNumbers.filter((r) => r === selectedRoundFilter);
 
-  return (
-    <div className="w-full max-w-6xl mx-auto px-4 py-8 md:py-12 space-y-8">
-      {/* 1. Winner Spotlight Header */}
-      <div className="p-8 md:p-12 rounded-3xl bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 border border-slate-800 shadow-2xl text-center space-y-4 relative overflow-hidden">
-        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/40 text-xs font-black text-amber-300">
-          <Trophy className="w-4 h-4 text-amber-400" />
-          <span>TOURNAMENT CONCLUDED</span>
+  // Host Winners Calculations: Individual Winner(s) & Pair Group Winner(s)
+  const sortedPlayers = [...players].sort((a, b) => b.score - a.score);
+  const highestIndividualScore = sortedPlayers.length > 0 ? sortedPlayers[0].score : 0;
+  const individualWinners = sortedPlayers.filter((p) => p.score === highestIndividualScore);
+
+  const sortedPairs = [...groupAnalysis.pairSummaries].sort((a, b) => {
+    if (b.combinedPoints !== a.combinedPoints) {
+      return b.combinedPoints - a.combinedPoints;
+    }
+    return b.mutualCooperations - a.mutualCooperations;
+  });
+  const highestPairScore = sortedPairs.length > 0 ? sortedPairs[0].combinedPoints : 0;
+  const pairWinners = sortedPairs.filter((p) => p.combinedPoints === highestPairScore && p.combinedPoints > 0);
+  const primaryPairWinner = sortedPairs.length > 0 ? sortedPairs[0] : null;
+
+  // ==========================================
+  // VIEW 1: INDIVIDUAL PLAYER RESULT VIEW
+  // (Strictly displays the winner between the 2 paired players, no other players' scores)
+  // ==========================================
+  if (role === 'player' && playerAnalysis) {
+    const {
+      player,
+      primaryOpponent,
+      duels,
+      totalMyPoints,
+      totalOpponentPoints,
+      duelsWon,
+      duelsLost,
+      duelsTied,
+      overallWinner,
+      myCooperations,
+      myBetrayals,
+      mutualCooperations,
+    } = playerAnalysis;
+
+    const opponentName = primaryOpponent?.player_name || 'Opponent';
+
+    return (
+      <div className="w-full max-w-4xl mx-auto px-4 py-8 md:py-12 space-y-8 animate-fade-in">
+        {/* 1. Individual 1v1 Duel Winner Spotlight Header */}
+        <div
+          className={`p-8 md:p-12 rounded-3xl border shadow-2xl text-center space-y-5 relative overflow-hidden ${
+            overallWinner === 'you'
+              ? 'bg-gradient-to-b from-emerald-950/80 via-slate-900 to-slate-950 border-emerald-500/50'
+              : overallWinner === 'opponent'
+              ? 'bg-gradient-to-b from-rose-950/80 via-slate-900 to-slate-950 border-rose-500/50'
+              : 'bg-gradient-to-b from-indigo-950/80 via-slate-900 to-slate-950 border-indigo-500/50'
+          }`}
+        >
+          {/* Winner Badge */}
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-950/90 border border-slate-800 text-xs font-black tracking-wider uppercase">
+            {overallWinner === 'you' ? (
+              <>
+                <Crown className="w-4 h-4 text-amber-400" />
+                <span className="text-emerald-400">1-ON-1 DUEL WINNER: YOU</span>
+              </>
+            ) : overallWinner === 'opponent' ? (
+              <>
+                <Zap className="w-4 h-4 text-rose-400" />
+                <span className="text-rose-400">1-ON-1 DUEL WINNER: {opponentName}</span>
+              </>
+            ) : (
+              <>
+                <Handshake className="w-4 h-4 text-indigo-400" />
+                <span className="text-indigo-300">1-ON-1 DUEL: DRAW</span>
+              </>
+            )}
+          </div>
+
+          {/* Big Headline */}
+          <h1 className="text-3xl md:text-5xl font-black text-white tracking-tight">
+            {overallWinner === 'you'
+              ? 'YOU WON THE DUEL!'
+              : overallWinner === 'opponent'
+              ? `${opponentName.toUpperCase()} WON THE DUEL`
+              : 'THE DUEL ENDED IN A DRAW'}
+          </h1>
+
+          {/* Side-by-Side Total Score Board */}
+          <div className="grid grid-cols-5 items-center gap-2 md:gap-4 max-w-lg mx-auto py-2">
+            {/* You */}
+            <div
+              className={`col-span-2 p-4 rounded-2xl border text-center space-y-1.5 ${
+                overallWinner === 'you'
+                  ? 'bg-emerald-950/50 border-emerald-500/50 ring-2 ring-emerald-500/30'
+                  : 'bg-slate-950/80 border-slate-800'
+              }`}
+            >
+              <div className="text-3xl md:text-4xl">{player.avatar || '🛡️'}</div>
+              <div className="text-xs font-bold text-white truncate">{player.player_name}</div>
+              <div className="text-[10px] uppercase font-black text-indigo-300 tracking-wider">YOU</div>
+              <div className="font-mono text-2xl md:text-3xl font-black text-emerald-400">
+                {totalMyPoints} <span className="text-xs text-slate-400 font-normal">pts</span>
+              </div>
+            </div>
+
+            {/* VS */}
+            <div className="col-span-1 flex flex-col items-center justify-center text-center">
+              <div className="w-10 h-10 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center text-xs font-black text-rose-400 shadow-md">
+                VS
+              </div>
+            </div>
+
+            {/* Opponent */}
+            <div
+              className={`col-span-2 p-4 rounded-2xl border text-center space-y-1.5 ${
+                overallWinner === 'opponent'
+                  ? 'bg-rose-950/50 border-rose-500/50 ring-2 ring-rose-500/30'
+                  : 'bg-slate-950/80 border-slate-800'
+              }`}
+            >
+              <div className="text-3xl md:text-4xl">{primaryOpponent?.avatar || '⚡'}</div>
+              <div className="text-xs font-bold text-white truncate">{opponentName}</div>
+              <div className="text-[10px] uppercase font-black text-slate-400 tracking-wider">OPPONENT</div>
+              <div className="font-mono text-2xl md:text-3xl font-black text-amber-400">
+                {totalOpponentPoints} <span className="text-xs text-slate-400 font-normal">pts</span>
+              </div>
+            </div>
+          </div>
+
+          <p className="text-xs md:text-sm text-slate-300 max-w-lg mx-auto leading-relaxed">
+            {overallWinner === 'you'
+              ? `You outperformed ${opponentName} with a final score of ${totalMyPoints} pts vs ${totalOpponentPoints} pts (${duelsWon} round wins, ${duelsTied} draws, ${duelsLost} losses).`
+              : overallWinner === 'opponent'
+              ? `${opponentName} took the victory with ${totalOpponentPoints} pts vs your ${totalMyPoints} pts (${duelsLost} round wins for opponent, ${duelsWon} for you).`
+              : `Both players finished evenly matched with ${totalMyPoints} pts across all completed rounds.`}
+          </p>
         </div>
 
-        <h1 className="text-3xl md:text-5xl font-black text-white tracking-tight">
-          CHAMPION OF STRATEGY
-        </h1>
+        {/* 2. 1-on-1 Head-to-Head Duel Metrics */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+          <div className="p-4 md:p-5 rounded-2xl bg-slate-900 border border-slate-800 shadow-xl space-y-1">
+            <div className="text-[10px] md:text-[11px] uppercase font-bold tracking-wider text-slate-400 flex items-center gap-1.5">
+              <Crown className="w-3.5 h-3.5 text-emerald-400" /> Your Round Wins
+            </div>
+            <div className="font-mono text-2xl md:text-3xl font-black text-emerald-400">
+              {duelsWon}
+            </div>
+            <div className="text-[10px] md:text-[11px] text-slate-400">
+              Out of {duels.length} rounds played
+            </div>
+          </div>
 
-        <div className="py-2">
-          <span className="text-3xl md:text-5xl font-black text-amber-400 font-mono">
-            {stats.winner_names.join(' & ')}
-          </span>
-          <div className="text-sm font-semibold text-slate-400 mt-1">
-            Winning Score: <span className="text-white font-bold">{stats.highest_score} Points</span>
+          <div className="p-4 md:p-5 rounded-2xl bg-slate-900 border border-slate-800 shadow-xl space-y-1">
+            <div className="text-[10px] md:text-[11px] uppercase font-bold tracking-wider text-slate-400 flex items-center gap-1.5">
+              <Zap className="w-3.5 h-3.5 text-rose-400" /> Opponent Wins
+            </div>
+            <div className="font-mono text-2xl md:text-3xl font-black text-rose-400">
+              {duelsLost}
+            </div>
+            <div className="text-[10px] md:text-[11px] text-slate-400">
+              Won by {opponentName}
+            </div>
+          </div>
+
+          <div className="p-4 md:p-5 rounded-2xl bg-slate-900 border border-slate-800 shadow-xl space-y-1">
+            <div className="text-[10px] md:text-[11px] uppercase font-bold tracking-wider text-slate-400 flex items-center gap-1.5">
+              <Handshake className="w-3.5 h-3.5 text-indigo-400" /> Mutual Trust
+            </div>
+            <div className="font-mono text-2xl md:text-3xl font-black text-indigo-400">
+              {mutualCooperations}
+            </div>
+            <div className="text-[10px] md:text-[11px] text-slate-400">
+              Both Cooperated (+3/+3)
+            </div>
+          </div>
+
+          <div className="p-4 md:p-5 rounded-2xl bg-slate-900 border border-slate-800 shadow-xl space-y-1">
+            <div className="text-[10px] md:text-[11px] uppercase font-bold tracking-wider text-slate-400 flex items-center gap-1.5">
+              <Shield className="w-3.5 h-3.5 text-amber-400" /> Your Strategy
+            </div>
+            <div className="font-mono text-base md:text-lg font-black text-amber-400 pt-1">
+              {myCooperations} Coop / {myBetrayals} Betray
+            </div>
+            <div className="text-[10px] md:text-[11px] text-slate-400">
+              Your decision pattern
+            </div>
           </div>
         </div>
 
-        <p className="text-sm text-slate-400 max-w-xl mx-auto leading-relaxed">
-          Completed {game.total_rounds} strategic rounds with {players.length} players and {groupAnalysis.totalGroupMatches} 1v1 pair duels.
-        </p>
+        {/* 3. Round-by-Round Breakdown strictly between You & Your Opponent */}
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 md:p-7 shadow-xl space-y-5">
+          <div className="border-b border-slate-800 pb-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Swords className="w-5 h-5 text-indigo-400" />
+              <h3 className="text-base md:text-lg font-black text-white">
+                Round-by-Round 1v1 Duel History
+              </h3>
+            </div>
+            <span className="text-xs text-slate-400 font-medium">
+              You vs {opponentName}
+            </span>
+          </div>
 
-        {/* Action Controls */}
-        <div className="flex flex-wrap items-center justify-center gap-3 pt-3">
+          <div className="space-y-3">
+            {duels.map((duel) => {
+              return (
+                <div
+                  key={duel.roundNumber}
+                  className={`p-4 rounded-2xl border transition-all ${
+                    duel.winner === 'you'
+                      ? 'bg-emerald-950/30 border-emerald-500/40'
+                      : duel.winner === 'opponent'
+                      ? 'bg-rose-950/30 border-rose-500/40'
+                      : 'bg-slate-950/80 border-slate-800'
+                  }`}
+                >
+                  {/* Round Header & Outcome Tag */}
+                  <div className="flex items-center justify-between mb-3 text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-black text-xs px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-300">
+                        R{duel.roundNumber}
+                      </span>
+                      <span
+                        className={`font-bold px-2 py-0.5 rounded text-[11px] border ${
+                          duel.winner === 'you'
+                            ? 'bg-emerald-950 text-emerald-300 border-emerald-500/40'
+                            : duel.winner === 'opponent'
+                            ? 'bg-rose-950 text-rose-300 border-rose-500/40'
+                            : 'bg-indigo-950 text-indigo-300 border-indigo-500/40'
+                        }`}
+                      >
+                        {duel.winner === 'you'
+                          ? `You Won (+${duel.myPoints} vs +${duel.opponentPoints})`
+                          : duel.winner === 'opponent'
+                          ? `${opponentName} Won (+${duel.opponentPoints} vs +${duel.myPoints})`
+                          : `Tied Matchup (+${duel.myPoints} each)`}
+                      </span>
+                    </div>
+
+                    <span className="text-[11px] text-slate-400 hidden sm:inline">
+                      {duel.headline}
+                    </span>
+                  </div>
+
+                  {/* 2-Player Side by Side */}
+                  <div className="grid grid-cols-5 items-center gap-2">
+                    {/* You */}
+                    <div className="col-span-2 space-y-1">
+                      <div className="flex items-center gap-1.5 truncate">
+                        <span className="text-lg">{player.avatar || '🛡️'}</span>
+                        <span className="text-xs font-bold text-white truncate">
+                          {player.player_name} (You)
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${
+                            duel.myDecision === 'cooperate'
+                              ? 'bg-emerald-950 text-emerald-400 border border-emerald-500/30'
+                              : duel.myDecision === 'betray'
+                              ? 'bg-rose-950 text-rose-400 border border-rose-500/30'
+                              : 'bg-slate-800 text-slate-400'
+                          }`}
+                        >
+                          {duel.myDecision}
+                        </span>
+                        <span className="font-mono text-xs font-black text-emerald-400">
+                          +{duel.myPoints} pts
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* VS */}
+                    <div className="col-span-1 text-center font-bold text-[10px] text-slate-400 uppercase">
+                      vs
+                    </div>
+
+                    {/* Opponent */}
+                    <div className="col-span-2 space-y-1 text-right">
+                      <div className="flex items-center justify-end gap-1.5 truncate">
+                        <span className="text-xs font-bold text-white truncate">
+                          {opponentName}
+                        </span>
+                        <span className="text-lg">{primaryOpponent?.avatar || '⚡'}</span>
+                      </div>
+                      <div className="flex items-center justify-end gap-1.5">
+                        <span className="font-mono text-xs font-black text-amber-400">
+                          +{duel.opponentPoints} pts
+                        </span>
+                        <span
+                          className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${
+                            duel.opponentDecision === 'cooperate'
+                              ? 'bg-emerald-950 text-emerald-400 border border-emerald-500/30'
+                              : duel.opponentDecision === 'betray'
+                              ? 'bg-rose-950 text-rose-400 border border-rose-500/30'
+                              : 'bg-slate-800 text-slate-400'
+                          }`}
+                        >
+                          {duel.opponentDecision}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================
+  // VIEW 2: HOST TOURNAMENT RESULT VIEW
+  // (Full room winner, team statistics, group pair matchups, and debrief guide)
+  // ==========================================
+  return (
+    <div className="w-full max-w-6xl mx-auto px-4 py-8 md:py-12 space-y-8 animate-fade-in">
+      {/* 1. Host Group Winner Spotlight Header: Individual Winner & Pair Group Winner */}
+      <div className="p-6 md:p-10 rounded-3xl bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 border border-slate-800 shadow-2xl space-y-6 relative overflow-hidden">
+        {/* Top Header Label */}
+        <div className="text-center space-y-2">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/40 text-xs font-black text-amber-300 uppercase tracking-wider">
+            <Trophy className="w-4 h-4 text-amber-400" />
+            <span>TOURNAMENT CONCLUDED &bull; {game.total_rounds} ROUNDS PLAYED</span>
+          </div>
+          <h1 className="text-2xl md:text-4xl font-black text-white tracking-tight">
+            TOURNAMENT CHAMPIONS
+          </h1>
+          <p className="text-xs md:text-sm text-slate-400 max-w-xl mx-auto">
+            Official strategic outcomes across {players.length} players and {groupAnalysis.totalGroupMatches} breakout duels.
+          </p>
+        </div>
+
+        {/* Dual Winner Spotlight Cards (Individual Winner & Pair Group Winner) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+          {/* CARD A: INDIVIDUAL WINNER */}
+          <div className="p-6 rounded-2xl bg-gradient-to-b from-amber-950/40 via-slate-950 to-slate-950 border border-amber-500/40 shadow-xl space-y-4 relative flex flex-col justify-between">
+            <div className="flex items-center justify-between">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/20 border border-amber-500/50 text-amber-300 text-xs font-black uppercase tracking-wider">
+                <Crown className="w-4 h-4 text-amber-400" />
+                <span>INDIVIDUAL WINNER</span>
+              </div>
+              <span className="text-[11px] font-mono font-bold text-amber-400 bg-slate-900 px-2 py-0.5 rounded border border-amber-500/30">
+                Top Score
+              </span>
+            </div>
+
+            <div className="space-y-3 py-2 text-center">
+              {individualWinners.length === 1 ? (
+                <>
+                  <div className="text-5xl">{individualWinners[0].avatar || '👑'}</div>
+                  <div>
+                    <h3 className="text-2xl font-black text-white">
+                      {individualWinners[0].player_name}
+                    </h3>
+                    <div className="font-mono text-3xl font-black text-amber-400 mt-1">
+                      {individualWinners[0].score} <span className="text-sm font-normal text-slate-400">pts</span>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center justify-center gap-2 text-4xl">
+                    {individualWinners.map((w) => (
+                      <span key={w.id}>{w.avatar || '👑'}</span>
+                    ))}
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold uppercase tracking-wider text-amber-400 mb-1">
+                      Co-Champions Tied
+                    </div>
+                    <h3 className="text-xl font-black text-white">
+                      {individualWinners.map((w) => w.player_name).join(' & ')}
+                    </h3>
+                    <div className="font-mono text-3xl font-black text-amber-400 mt-1">
+                      {highestIndividualScore} <span className="text-sm font-normal text-slate-400">pts each</span>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="text-xs text-slate-400 bg-slate-900/80 p-3 rounded-xl border border-slate-800 text-center">
+              Highest individual point total scored across all tournament rounds.
+            </div>
+          </div>
+
+          {/* CARD B: PAIR GROUP WINNER */}
+          <div className="p-6 rounded-2xl bg-gradient-to-b from-emerald-950/40 via-slate-950 to-slate-950 border border-emerald-500/40 shadow-xl space-y-4 relative flex flex-col justify-between">
+            <div className="flex items-center justify-between">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-500/50 text-emerald-300 text-xs font-black uppercase tracking-wider">
+                <Handshake className="w-4 h-4 text-emerald-400" />
+                <span>PAIR GROUP WINNER</span>
+              </div>
+              <span className="text-[11px] font-mono font-bold text-emerald-400 bg-slate-900 px-2 py-0.5 rounded border border-emerald-500/30">
+                Top Duo
+              </span>
+            </div>
+
+            <div className="space-y-3 py-2 text-center">
+              {primaryPairWinner ? (
+                <>
+                  <div className="flex items-center justify-center gap-3 text-4xl">
+                    <span>{primaryPairWinner.player1.avatar || '🛡️'}</span>
+                    <span className="text-xl text-slate-400 font-bold">&</span>
+                    <span>{primaryPairWinner.player2.avatar || '⚡'}</span>
+                  </div>
+                  <div>
+                    <h3 className="text-xl md:text-2xl font-black text-white">
+                      {primaryPairWinner.player1.player_name} & {primaryPairWinner.player2.player_name}
+                    </h3>
+                    <div className="font-mono text-3xl font-black text-emerald-400 mt-1">
+                      {primaryPairWinner.combinedPoints} <span className="text-sm font-normal text-slate-400">combined pts</span>
+                    </div>
+                    <div className="text-xs text-emerald-300 font-semibold mt-1">
+                      {primaryPairWinner.synergyType} &bull; {primaryPairWinner.mutualCooperations} Mutual Trust Duels
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="py-6 text-slate-400 text-sm">
+                  Single player session (Pair results recorded for 2+ players)
+                </div>
+              )}
+            </div>
+
+            <div className="text-xs text-slate-400 bg-slate-900/80 p-3 rounded-xl border border-slate-800 text-center">
+              Highest collective scoring and most cooperative duo pairing in the tournament.
+            </div>
+          </div>
+        </div>
+
+        {/* Host Action Controls */}
+        <div className="flex flex-wrap items-center justify-center gap-3 pt-2 border-t border-slate-800/80">
           <button
             onClick={handleExportCsv}
             className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-700 flex items-center gap-2 transition"
@@ -141,15 +549,13 @@ export const FinalSummary: React.FC<FinalSummaryProps> = ({
             <Download className="w-4 h-4 text-indigo-400" /> Export Full Tournament CSV
           </button>
 
-          {role === 'host' && (
-            <button
-              onClick={onResetGame}
-              className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-lg shadow-indigo-600/30 flex items-center gap-2 transition"
-              id="btn-host-reset-game"
-            >
-              <RotateCcw className="w-4 h-4" /> Start New Session
-            </button>
-          )}
+          <button
+            onClick={onResetGame}
+            className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-lg shadow-indigo-600/30 flex items-center gap-2 transition"
+            id="btn-host-reset-game"
+          >
+            <RotateCcw className="w-4 h-4" /> Start New Session
+          </button>
 
           <button
             onClick={onHome}
@@ -216,51 +622,51 @@ export const FinalSummary: React.FC<FinalSummaryProps> = ({
         </div>
       </div>
 
-      {/* 3. Navigation Tabs */}
+      {/* 3. Host Navigation Tabs */}
       <div className="flex items-center justify-center gap-2 border-b border-slate-800 pb-3 flex-wrap">
         <button
-          onClick={() => setActiveTab('individual')}
+          onClick={() => setActiveHostTab('standings')}
           className={`px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
-            activeTab === 'individual'
+            activeHostTab === 'standings'
               ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
               : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
           }`}
-          id="tab-final-individual"
+          id="tab-final-standings"
         >
           <Trophy className="w-4 h-4" />
-          <span>Individual Standings</span>
+          <span>Group Standings & Podium</span>
         </button>
 
         <button
-          onClick={() => setActiveTab('group')}
+          onClick={() => setActiveHostTab('all_pairs')}
           className={`px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
-            activeTab === 'group'
+            activeHostTab === 'all_pairs'
               ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
               : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
           }`}
-          id="tab-final-group"
+          id="tab-final-all-pairs"
         >
           <Layers className="w-4 h-4" />
-          <span>Group Results ({groupAnalysis.totalGroupMatches} Pair Duels)</span>
+          <span>All Group Pair Matchups ({groupAnalysis.totalGroupMatches} Duels)</span>
         </button>
 
         <button
-          onClick={() => setActiveTab('dynamics')}
+          onClick={() => setActiveHostTab('dynamics')}
           className={`px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
-            activeTab === 'dynamics'
+            activeHostTab === 'dynamics'
               ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
               : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
           }`}
           id="tab-final-dynamics"
         >
           <Handshake className="w-4 h-4" />
-          <span>Pair Synergy & Trust</span>
+          <span>Room Pair Synergy & Trust</span>
         </button>
 
         <button
-          onClick={() => setActiveTab('debrief')}
+          onClick={() => setActiveHostTab('debrief')}
           className={`px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
-            activeTab === 'debrief'
+            activeHostTab === 'debrief'
               ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
               : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
           }`}
@@ -271,16 +677,15 @@ export const FinalSummary: React.FC<FinalSummaryProps> = ({
         </button>
       </div>
 
-      {/* 4. Tab Contents */}
+      {/* 4. Host Tab Contents */}
 
-      {/* TAB 1: INDIVIDUAL STANDINGS */}
-      {activeTab === 'individual' && (
+      {/* TAB 1: GROUP STANDINGS */}
+      {activeHostTab === 'standings' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start animate-fade-in">
           <div className="lg:col-span-8">
             <Leaderboard
               players={players}
               isFinal={true}
-              highlightPlayerId={currentPlayerId}
             />
           </div>
 
@@ -292,7 +697,7 @@ export const FinalSummary: React.FC<FinalSummaryProps> = ({
 
               <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
                 <div className="text-[11px] font-semibold text-emerald-400 flex items-center gap-1.5">
-                  <Shield className="w-3.5 h-3.5" /> Cooperation Anchor
+                  <Shield className="w-3.5 h-3.5" /> Group Cooperation Anchor
                 </div>
                 <div className="font-bold text-base text-white">
                   {stats.most_cooperative_player?.name || 'Everyone'}
@@ -306,7 +711,7 @@ export const FinalSummary: React.FC<FinalSummaryProps> = ({
 
               <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
                 <div className="text-[11px] font-semibold text-rose-400 flex items-center gap-1.5">
-                  <Zap className="w-3.5 h-3.5" /> Risk Defector
+                  <Zap className="w-3.5 h-3.5" /> Group Risk Defector
                 </div>
                 <div className="font-bold text-base text-white">
                   {stats.biggest_betrayer?.name || 'None'}
@@ -322,8 +727,8 @@ export const FinalSummary: React.FC<FinalSummaryProps> = ({
         </div>
       )}
 
-      {/* TAB 2: GROUP RESULTS (Round-by-round pair matchups) */}
-      {activeTab === 'group' && (
+      {/* TAB 2: ALL GROUP PAIR RESULTS */}
+      {activeHostTab === 'all_pairs' && (
         <div className="space-y-6 animate-fade-in">
           {/* Round Filter Bar */}
           <div className="flex items-center justify-between flex-wrap gap-3 bg-slate-900/90 border border-slate-800 p-4 rounded-2xl shadow-lg">
@@ -394,18 +799,10 @@ export const FinalSummary: React.FC<FinalSummaryProps> = ({
                   {/* Grid of 2-player matches for this round */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {matches.map((m) => {
-                      const isHighlighted =
-                        currentPlayerId &&
-                        (m.player1.id === currentPlayerId || m.player2.id === currentPlayerId);
-
                       return (
                         <div
                           key={m.pairId}
-                          className={`p-4 rounded-2xl border transition-all ${
-                            isHighlighted
-                              ? 'bg-indigo-950/40 border-indigo-500/60 ring-2 ring-indigo-500/20'
-                              : 'bg-slate-950/80 border-slate-800 hover:border-slate-700'
-                          }`}
+                          className="p-4 rounded-2xl border bg-slate-950/80 border-slate-800 hover:border-slate-700 transition-all"
                         >
                           {/* Top Outcome Badge */}
                           <div className="flex items-center justify-between mb-3 text-xs">
@@ -420,11 +817,6 @@ export const FinalSummary: React.FC<FinalSummaryProps> = ({
                             >
                               {m.headline}
                             </span>
-                            {isHighlighted && (
-                              <span className="text-[10px] uppercase font-black tracking-wider text-indigo-300 bg-indigo-900/60 px-2 py-0.5 rounded">
-                                Your Match
-                              </span>
-                            )}
                           </div>
 
                           {/* 2-Player Side by Side */}
@@ -498,7 +890,7 @@ export const FinalSummary: React.FC<FinalSummaryProps> = ({
       )}
 
       {/* TAB 3: PAIR SYNERGY & TRUST DYNAMICS */}
-      {activeTab === 'dynamics' && (
+      {activeHostTab === 'dynamics' && (
         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8 shadow-xl space-y-6 animate-fade-in">
           <div className="border-b border-slate-800 pb-4">
             <h3 className="text-lg font-black text-white flex items-center gap-2">
@@ -550,7 +942,7 @@ export const FinalSummary: React.FC<FinalSummaryProps> = ({
       )}
 
       {/* TAB 4: FACILITATOR DEBRIEF GUIDE */}
-      {activeTab === 'debrief' && (
+      {activeHostTab === 'debrief' && (
         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8 shadow-xl space-y-6 animate-fade-in">
           <div className="flex items-center gap-2.5 border-b border-slate-800 pb-4">
             <div className="p-2 rounded-xl bg-indigo-500/20 text-indigo-400">

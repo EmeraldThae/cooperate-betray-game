@@ -51,6 +51,9 @@ export const Lobby: React.FC<LobbyProps> = ({
   const [isRandomizing, setIsRandomizing] = useState(false);
   const [pairings, setPairings] = useState<Array<[Player, Player]>>([]);
 
+  const isHost = role === 'host';
+  const currentPlayer = players.find((p) => p.id === currentPlayerId);
+
   const getJoinUrl = () => {
     if (typeof window === 'undefined') return '';
     return `${window.location.origin}/?code=${encodeURIComponent(game.game_code)}`;
@@ -126,13 +129,99 @@ export const Lobby: React.FC<LobbyProps> = ({
     }
   };
 
-  const isHost = role === 'host';
   const canStart = players.length >= 2;
   const joinUrl = getJoinUrl();
   const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(joinUrl)}&bgcolor=0f172a&color=38bdf8`;
 
+  // ==========================================
+  // VIEW 1: INDIVIDUAL PLAYER WAITING VIEW
+  // (No Copy Code, No Copy Link, No Mobile QR, and No other player waiting list)
+  // ==========================================
+  if (!isHost) {
+    return (
+      <div className="w-full max-w-lg mx-auto px-4 py-8 space-y-6 animate-fade-in">
+        {/* Room Header Badge */}
+        <div className="p-6 rounded-3xl bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 border border-slate-800 shadow-2xl text-center space-y-4">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-xs font-semibold text-emerald-400">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span>CONNECTED TO ROOM • LOBBY ACTIVE</span>
+          </div>
+
+          <div>
+            <div className="text-[11px] uppercase tracking-widest font-bold text-slate-400 mb-1">
+              Game Room Code
+            </div>
+            <div className="font-mono text-4xl sm:text-5xl font-black text-amber-400 tracking-wider">
+              {game.game_code}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-center gap-3 text-xs text-slate-400 pt-2 border-t border-slate-800">
+            <div className="flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <span>{game.total_rounds} Rounds</span>
+            </div>
+            <span>•</span>
+            <div className="flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5 text-rose-400" />
+              <span>{game.decision_time_seconds}s Decision Time</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Player Profile & Waiting Status */}
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-xl text-center space-y-6">
+          {/* Player Identity Card */}
+          <div className="p-5 rounded-2xl bg-indigo-950/40 border border-indigo-500/30 space-y-3">
+            <div className="text-5xl">{currentPlayer?.avatar || '🛡️'}</div>
+            <div>
+              <div className="text-[11px] font-bold uppercase tracking-wider text-indigo-400">
+                You Are Playing As
+              </div>
+              <h3 className="text-2xl font-black text-white mt-0.5">
+                {currentPlayer?.player_name || 'Your Player'}
+              </h3>
+            </div>
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-xs font-semibold">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              <span>Ready & Online</span>
+            </div>
+          </div>
+
+          {/* Waiting Pulsing State */}
+          <div className="space-y-3 py-2">
+            <div className="w-14 h-14 rounded-full bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400 mx-auto animate-pulse">
+              <Clock className="w-7 h-7" />
+            </div>
+            <div>
+              <h4 className="font-bold text-white text-lg">Waiting for Host to Start</h4>
+              <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto leading-relaxed">
+                You are registered in the game. Your screen will automatically advance to Round 1 as soon as the facilitator launches the session.
+              </p>
+            </div>
+          </div>
+
+          {/* Quick Dilemma Reminder */}
+          <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800/80 text-left space-y-2 text-xs text-slate-400">
+            <div className="font-bold text-slate-200 flex items-center gap-1.5">
+              <ShieldAlert className="w-4 h-4 text-amber-400" />
+              <span>How It Works</span>
+            </div>
+            <p className="text-[11px] leading-relaxed text-slate-400">
+              Each round you will be paired in a 1-on-1 strategic duel. Choose <strong className="text-emerald-400 font-semibold">COOPERATE</strong> or <strong className="text-rose-400 font-semibold">BETRAY</strong> before time expires.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================
+  // VIEW 2: HOST / FACILITATOR LOBBY VIEW
+  // (Shows Room Code sharing, QR code, Team Roster, and Launch Controls)
+  // ==========================================
   return (
-    <div className="w-full max-w-4xl mx-auto px-4 py-8 space-y-8">
+    <div className="w-full max-w-4xl mx-auto px-4 py-8 space-y-8 animate-fade-in">
       {/* Game Code Announcement Banner */}
       <div className="p-6 md:p-8 rounded-3xl bg-gradient-to-b from-slate-900 to-slate-950 border border-slate-800 shadow-2xl text-center space-y-5 relative overflow-hidden">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800 border border-slate-700 text-xs font-semibold text-slate-300">
@@ -225,7 +314,7 @@ export const Lobby: React.FC<LobbyProps> = ({
         </div>
       </div>
 
-      {/* Main Roster & Controls Grid */}
+      {/* Main Roster & Controls Grid for Host */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-start">
         {/* Left: Player Roster & 2-Player Matchups */}
         <div className="md:col-span-8 bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-5">
@@ -234,7 +323,7 @@ export const Lobby: React.FC<LobbyProps> = ({
               <Users className="w-5 h-5 text-indigo-400" /> Connected Team Roster
             </h3>
             <div className="flex items-center gap-2">
-              {isHost && players.length >= 2 && (
+              {players.length >= 2 && (
                 <button
                   onClick={handleGeneratePairs}
                   className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-slate-700 flex items-center gap-1 transition"
@@ -329,77 +418,61 @@ export const Lobby: React.FC<LobbyProps> = ({
           />
         </div>
 
-        {/* Right: Facilitator Action or Player Waiting */}
+        {/* Right: Facilitator Action */}
         <div className="md:col-span-4 space-y-4">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl text-center space-y-4">
-            {isHost ? (
-              <>
-                <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400 mx-auto">
-                  <Play className="w-6 h-6 ml-0.5" />
-                </div>
-                <div>
-                  <h4 className="font-bold text-white text-base">Host Control</h4>
-                  <p className="text-xs text-slate-400 mt-1">
-                    {canStart
-                      ? 'All set! Launch Round 1 when your team is assembled.'
-                      : 'At least 2 players are needed to begin the simulation.'}
-                  </p>
-                </div>
+            <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400 mx-auto">
+              <Play className="w-6 h-6 ml-0.5" />
+            </div>
+            <div>
+              <h4 className="font-bold text-white text-base">Host Control</h4>
+              <p className="text-xs text-slate-400 mt-1">
+                {canStart
+                  ? 'All set! Launch Round 1 when your team is assembled.'
+                  : 'At least 2 players are needed to begin the simulation.'}
+              </p>
+            </div>
 
-                {/* Host Quick 2-Player Setup Button */}
-                {players.length < 2 && (
-                  <button
-                    onClick={handleRandomTwoPlayerSetup}
-                    disabled={isRandomizing}
-                    className="w-full py-3 px-4 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs font-bold flex items-center justify-center gap-2 transition active:scale-95 cursor-pointer"
-                    id="btn-random-2p-setup"
-                  >
-                    {isRandomizing ? (
-                      <>
-                        <RefreshCw className="w-4 h-4 animate-spin" />
-                        <span>Setting up 2 Players...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Dices className="w-4 h-4 text-amber-400" />
-                        <span>🎲 Random Setup for 2 Players</span>
-                      </>
-                    )}
-                  </button>
+            {/* Host Quick 2-Player Setup Button */}
+            {players.length < 2 && (
+              <button
+                onClick={handleRandomTwoPlayerSetup}
+                disabled={isRandomizing}
+                className="w-full py-3 px-4 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs font-bold flex items-center justify-center gap-2 transition active:scale-95 cursor-pointer"
+                id="btn-random-2p-setup"
+              >
+                {isRandomizing ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Setting up 2 Players...</span>
+                  </>
+                ) : (
+                  <>
+                    <Dices className="w-4 h-4 text-amber-400" />
+                    <span>🎲 Random Setup for 2 Players</span>
+                  </>
                 )}
-
-                <button
-                  onClick={handleStart}
-                  disabled={!canStart || isStarting}
-                  className="w-full py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-base shadow-xl shadow-indigo-600/30 flex items-center justify-center gap-2 transition disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 cursor-pointer"
-                  id="btn-host-start-game"
-                >
-                  {isStarting ? (
-                    <>
-                      <RefreshCw className="w-5 h-5 animate-spin" />
-                      <span>Starting Session...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Play className="w-5 h-5" />
-                      <span>START ROUND 1</span>
-                    </>
-                  )}
-                </button>
-              </>
-            ) : (
-              <div className="py-6 space-y-4">
-                <div className="w-12 h-12 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 mx-auto animate-pulse">
-                  <Clock className="w-6 h-6" />
-                </div>
-                <div>
-                  <h4 className="font-bold text-white text-base">Ready & Waiting</h4>
-                  <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                    Waiting for the Host to start the game. Your mobile or desktop screen will transition automatically once the round starts.
-                  </p>
-                </div>
-              </div>
+              </button>
             )}
+
+            <button
+              onClick={handleStart}
+              disabled={!canStart || isStarting}
+              className="w-full py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-base shadow-xl shadow-indigo-600/30 flex items-center justify-center gap-2 transition disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 cursor-pointer"
+              id="btn-host-start-game"
+            >
+              {isStarting ? (
+                <>
+                  <RefreshCw className="w-5 h-5 animate-spin" />
+                  <span>Starting Session...</span>
+                </>
+              ) : (
+                <>
+                  <Play className="w-5 h-5" />
+                  <span>START ROUND 1</span>
+                </>
+              )}
+            </button>
           </div>
 
           {/* Quick instructions reminder */}

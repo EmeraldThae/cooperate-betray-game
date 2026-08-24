@@ -2,8 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Game, Player, Round, Decision, DecisionType } from '../types';
 import { CountdownTimer } from '../components/CountdownTimer';
 import { DecisionButtons } from '../components/DecisionButtons';
-import { Leaderboard } from '../components/Leaderboard';
-import { PairResultsView } from '../components/PairResultsView';
 import {
   Shield,
   Zap,
@@ -12,8 +10,10 @@ import {
   Trophy,
   Sparkles,
   Swords,
-  Layers,
-  Sparkle,
+  Award,
+  Crown,
+  Handshake,
+  AlertCircle,
 } from 'lucide-react';
 import { GameService } from '../supabase/serviceAdapter';
 import { playSound } from '../utils/audio';
@@ -38,7 +38,6 @@ export const PlayerGame: React.FC<PlayerGameProps> = ({
 }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [localDecision, setLocalDecision] = useState<DecisionType | null>(null);
-  const [activeResultsTab, setActiveResultsTab] = useState<'duel' | 'group' | 'leaderboard'>('duel');
 
   // Pairings for this round
   const activePairings = currentRound?.pairings || game.current_pairings || [];
@@ -101,6 +100,16 @@ export const PlayerGame: React.FC<PlayerGameProps> = ({
   const myDuelPoints = isPlayer1 ? duelCalc.p1Points : duelCalc.p2Points;
   const oppDuelPoints = isPlayer1 ? duelCalc.p2Points : duelCalc.p1Points;
 
+  // Determine round winner between the two players
+  let roundDuelWinner: 'you' | 'opponent' | 'tie' = 'tie';
+  if (myDuelPoints > oppDuelPoints) {
+    roundDuelWinner = 'you';
+  } else if (oppDuelPoints > myDuelPoints) {
+    roundDuelWinner = 'opponent';
+  } else {
+    roundDuelWinner = 'tie';
+  }
+
   return (
     <div className="w-full max-w-4xl mx-auto px-3.5 sm:px-4 py-4 md:py-7 space-y-5">
       {/* 1. Player Header Banner with Countdown Timer & Score */}
@@ -135,7 +144,7 @@ export const PlayerGame: React.FC<PlayerGameProps> = ({
 
           {/* Current Player Total Score */}
           <div className="text-right px-4 py-2 rounded-xl bg-slate-950/80 border border-slate-800">
-            <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Total Score</div>
+            <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Your Total Score</div>
             <div className="font-mono text-xl font-black text-amber-400 leading-none mt-0.5">
               {player.score} <span className="text-xs text-slate-400 font-normal">pts</span>
             </div>
@@ -143,7 +152,7 @@ export const PlayerGame: React.FC<PlayerGameProps> = ({
         </div>
       </div>
 
-      {/* 2. TOP SECTION: COOPERATE & BETRAY ACTION BUTTONS (Moved to Top for instant mobile access) */}
+      {/* 2. TOP SECTION: COOPERATE & BETRAY ACTION BUTTONS */}
       {!isRevealed ? (
         <div className="space-y-4 pt-1">
           <div className="text-center space-y-1 max-w-md mx-auto px-2">
@@ -152,7 +161,7 @@ export const PlayerGame: React.FC<PlayerGameProps> = ({
             </h3>
             <p className="text-xs md:text-sm text-slate-400">
               {isLocked
-                ? 'Your choice is securely locked on the server. Waiting for Host to reveal results.'
+                ? 'Your choice is securely locked. Waiting for Host to reveal round results.'
                 : 'Tap Cooperate or Betray below to submit your move for this round:'}
             </p>
           </div>
@@ -166,61 +175,107 @@ export const PlayerGame: React.FC<PlayerGameProps> = ({
           />
         </div>
       ) : (
-        /* Top Banner when Results are Revealed */
-        <div className="p-4 md:p-5 rounded-2xl bg-gradient-to-r from-indigo-950/60 via-slate-900 to-indigo-950/60 border border-indigo-500/40 text-center space-y-1 animate-fade-in shadow-lg">
-          <div className="inline-flex items-center gap-1.5 text-xs font-black text-indigo-300 uppercase tracking-wider">
-            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            <span>Round {game.current_round} Results Revealed</span>
+        /* Top Banner when Results are Revealed - 1v1 Winner Focus */
+        <div
+          className={`p-4 md:p-6 rounded-3xl border text-center space-y-2 animate-fade-in shadow-xl ${
+            roundDuelWinner === 'you'
+              ? 'bg-gradient-to-b from-emerald-950/80 via-slate-900 to-slate-950 border-emerald-500/50'
+              : roundDuelWinner === 'opponent'
+              ? 'bg-gradient-to-b from-rose-950/80 via-slate-900 to-slate-950 border-rose-500/50'
+              : 'bg-gradient-to-b from-indigo-950/80 via-slate-900 to-slate-950 border-indigo-500/50'
+          }`}
+        >
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-slate-950/80 border border-slate-800">
+            {roundDuelWinner === 'you' ? (
+              <>
+                <Crown className="w-4 h-4 text-amber-400" />
+                <span className="text-emerald-400">ROUND {game.current_round} DUEL WINNER: YOU</span>
+              </>
+            ) : roundDuelWinner === 'opponent' ? (
+              <>
+                <Zap className="w-4 h-4 text-rose-400" />
+                <span className="text-rose-400">ROUND {game.current_round} DUEL WINNER: {opponent?.player_name || 'OPPONENT'}</span>
+              </>
+            ) : (
+              <>
+                <Handshake className="w-4 h-4 text-indigo-400" />
+                <span className="text-indigo-300">ROUND {game.current_round} DUEL: TIED MATCHUP</span>
+              </>
+            )}
           </div>
-          <div className="text-sm font-medium text-slate-200">
-            You chose <span className={`font-black uppercase ${effectiveDecision === 'cooperate' ? 'text-emerald-400' : 'text-rose-400'}`}>{effectiveDecision || 'no decision'}</span> and earned <span className="font-mono font-black text-amber-400">+{myDuelPoints} pts</span> this round.
-          </div>
+
+          <h3 className="text-xl md:text-2xl font-black text-white">
+            {roundDuelWinner === 'you'
+              ? `You Won (+${myDuelPoints} pts vs +${oppDuelPoints} pts)`
+              : roundDuelWinner === 'opponent'
+              ? `${opponent?.player_name || 'Opponent'} Won (+${oppDuelPoints} pts vs +${myDuelPoints} pts)`
+              : `Both Scored (+${myDuelPoints} pts each)`}
+          </h3>
+
+          <p className="text-xs md:text-sm text-slate-300 max-w-md mx-auto">
+            {duelCalc.description}
+          </p>
         </div>
       )}
 
-      {/* 3. MATCH PAIR SECTION (Moved Below Action Buttons, Rule Matrix Removed) */}
+      {/* 3. 1-ON-1 MATCH PAIR SECTION (Strictly between You & Your Opponent) */}
       <div className="p-4 md:p-6 rounded-3xl bg-slate-900/95 border border-slate-800 shadow-xl relative overflow-hidden">
         <div className="flex items-center justify-between border-b border-slate-800/80 pb-3 mb-3.5">
           <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-indigo-400">
             <Swords className="w-4 h-4 text-rose-400" />
-            <span>Match Pair (Round {game.current_round})</span>
+            <span>1-on-1 Head-to-Head (Round {game.current_round})</span>
           </div>
           <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-slate-400">
-            {isRevealed ? 'Revealed' : isLocked ? 'Locked' : 'In Progress'}
+            {isRevealed ? 'Results Revealed' : isLocked ? 'Locked' : 'Deciding'}
           </span>
         </div>
 
-        {/* 2-Player Split Screen */}
+        {/* 2-Player Side by Side */}
         <div className="grid grid-cols-5 items-center gap-2 md:gap-4 py-1">
           {/* You (Player 1) */}
-          <div className="col-span-2 p-3 md:p-4 rounded-2xl bg-indigo-950/40 border border-indigo-500/30 space-y-1.5">
+          <div
+            className={`col-span-2 p-3.5 md:p-4 rounded-2xl border space-y-2 ${
+              isRevealed && roundDuelWinner === 'you'
+                ? 'bg-emerald-950/40 border-emerald-500/50 ring-1 ring-emerald-500/30'
+                : 'bg-indigo-950/40 border-indigo-500/30'
+            }`}
+          >
             <div className="flex items-center gap-2 truncate">
               <span className="text-2xl md:text-3xl">{player.avatar || '🛡️'}</span>
               <div className="truncate">
-                <div className="text-[10px] text-indigo-300 font-black uppercase tracking-wider">YOU</div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] text-indigo-300 font-black uppercase tracking-wider">YOU</span>
+                  {isRevealed && roundDuelWinner === 'you' && (
+                    <span className="text-[9px] font-black uppercase bg-amber-400 text-slate-950 px-1.5 py-0.2 rounded font-mono">
+                      WINNER
+                    </span>
+                  )}
+                </div>
                 <div className="text-xs md:text-sm font-bold text-white truncate">{player.player_name}</div>
               </div>
             </div>
 
             <div className="pt-0.5 text-xs">
               {isRevealed ? (
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  {effectiveDecision === 'cooperate' ? (
-                    <span className="inline-flex items-center gap-1 text-[11px] font-black text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded-lg border border-emerald-500/40">
-                      <Shield className="w-3 h-3" /> COOPERATED
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {effectiveDecision === 'cooperate' ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-black text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded-lg border border-emerald-500/40">
+                        <Shield className="w-3 h-3" /> COOPERATED
+                      </span>
+                    ) : effectiveDecision === 'betray' ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-black text-rose-400 bg-rose-950 px-2 py-0.5 rounded-lg border border-rose-500/40">
+                        <Zap className="w-3 h-3" /> BETRAYED
+                      </span>
+                    ) : (
+                      <span className="text-[11px] text-slate-400 font-semibold bg-slate-800 px-2 py-0.5 rounded-lg">
+                        TIMED OUT
+                      </span>
+                    )}
+                    <span className="font-mono text-xs font-black text-emerald-400 ml-auto">
+                      +{myDuelPoints} pts
                     </span>
-                  ) : effectiveDecision === 'betray' ? (
-                    <span className="inline-flex items-center gap-1 text-[11px] font-black text-rose-400 bg-rose-950 px-2 py-0.5 rounded-lg border border-rose-500/40">
-                      <Zap className="w-3 h-3" /> BETRAYED
-                    </span>
-                  ) : (
-                    <span className="text-[11px] text-slate-400 font-semibold bg-slate-800 px-2 py-0.5 rounded-lg">
-                      TIMED OUT
-                    </span>
-                  )}
-                  <span className="font-mono text-xs font-black text-emerald-400 ml-auto">
-                    +{myDuelPoints} pts
-                  </span>
+                  </div>
                 </div>
               ) : isLocked ? (
                 <div className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded-lg border border-emerald-500/30">
@@ -242,15 +297,28 @@ export const PlayerGame: React.FC<PlayerGameProps> = ({
               VS
             </div>
             <div className="text-[9px] uppercase tracking-widest text-slate-400 font-bold mt-1 hidden sm:block">
-              1v1 PAIR
+              1v1
             </div>
           </div>
 
           {/* Opponent (Player 2) */}
-          <div className="col-span-2 p-3 md:p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-1.5 text-right">
+          <div
+            className={`col-span-2 p-3.5 md:p-4 rounded-2xl border space-y-2 text-right ${
+              isRevealed && roundDuelWinner === 'opponent'
+                ? 'bg-rose-950/40 border-rose-500/50 ring-1 ring-rose-500/30'
+                : 'bg-slate-950/80 border-slate-800'
+            }`}
+          >
             <div className="flex items-center justify-end gap-2 truncate">
               <div className="truncate">
-                <div className="text-[10px] text-slate-400 font-black uppercase tracking-wider">OPPONENT</div>
+                <div className="flex items-center justify-end gap-1.5">
+                  {isRevealed && roundDuelWinner === 'opponent' && (
+                    <span className="text-[9px] font-black uppercase bg-amber-400 text-slate-950 px-1.5 py-0.2 rounded font-mono">
+                      WINNER
+                    </span>
+                  )}
+                  <span className="text-[10px] text-slate-400 font-black uppercase tracking-wider">OPPONENT</span>
+                </div>
                 <div className="text-xs md:text-sm font-bold text-white truncate">
                   {opponent ? opponent.player_name : 'Assigned Partner'}
                 </div>
@@ -260,23 +328,25 @@ export const PlayerGame: React.FC<PlayerGameProps> = ({
 
             <div className="pt-0.5 text-xs">
               {isRevealed ? (
-                <div className="flex items-center justify-end gap-1.5 flex-wrap">
-                  <span className="font-mono text-xs font-black text-emerald-400 mr-auto">
-                    +{oppDuelPoints} pts
-                  </span>
-                  {oppDec === 'cooperate' ? (
-                    <span className="inline-flex items-center gap-1 text-[11px] font-black text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded-lg border border-emerald-500/40">
-                      <Shield className="w-3 h-3" /> COOPERATED
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                    <span className="font-mono text-xs font-black text-emerald-400 mr-auto">
+                      +{oppDuelPoints} pts
                     </span>
-                  ) : oppDec === 'betray' ? (
-                    <span className="inline-flex items-center gap-1 text-[11px] font-black text-rose-400 bg-rose-950 px-2 py-0.5 rounded-lg border border-rose-500/40">
-                      <Zap className="w-3 h-3" /> BETRAYED
-                    </span>
-                  ) : (
-                    <span className="text-[11px] text-slate-400 font-semibold bg-slate-800 px-2 py-0.5 rounded-lg">
-                      TIMED OUT
-                    </span>
-                  )}
+                    {oppDec === 'cooperate' ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-black text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded-lg border border-emerald-500/40">
+                        <Shield className="w-3 h-3" /> COOPERATED
+                      </span>
+                    ) : oppDec === 'betray' ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-black text-rose-400 bg-rose-950 px-2 py-0.5 rounded-lg border border-rose-500/40">
+                        <Zap className="w-3 h-3" /> BETRAYED
+                      </span>
+                    ) : (
+                      <span className="text-[11px] text-slate-400 font-semibold bg-slate-800 px-2 py-0.5 rounded-lg">
+                        TIMED OUT
+                      </span>
+                    )}
+                  </div>
                 </div>
               ) : isOpponentLocked ? (
                 <div className="inline-flex items-center justify-end gap-1 text-[11px] font-bold text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded-lg border border-emerald-500/30">
@@ -294,114 +364,33 @@ export const PlayerGame: React.FC<PlayerGameProps> = ({
         </div>
       </div>
 
-      {/* 4. RESULTS SECTION (Displayed Below Match Pair when revealed) */}
+      {/* 4. POST-REVEAL 1-ON-1 SCORE SUMMARY (Exclusively between these two players) */}
       {isRevealed && (
-        <div className="space-y-5 animate-fade-in">
-          {/* Duel Outcome Spotlight Card */}
-          <div className="p-5 md:p-7 rounded-3xl bg-slate-900 border border-slate-800 shadow-xl space-y-4 text-center">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-950/90 border border-indigo-500/40 text-xs font-bold text-indigo-300">
-              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              <span>ROUND {game.current_round} DUEL OUTCOME</span>
-            </div>
-
-            <div className="max-w-lg mx-auto space-y-2.5">
-              <h3 className="text-xl md:text-2xl font-black text-white">
-                {duelCalc.headline}
-              </h3>
-              <p className="text-xs md:text-sm text-slate-300 leading-relaxed">
-                {duelCalc.description}
-              </p>
-
-              {/* Score change badge */}
-              <div className="inline-block p-3.5 rounded-2xl bg-slate-950 border border-slate-800 shadow-inner mt-1">
-                <div className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider">Your Points This Round</div>
-                <div className="font-mono text-3xl font-black text-emerald-400 mt-0.5">
-                  +{myDuelPoints} <span className="text-base text-slate-400 font-normal">pts</span>
-                </div>
+        <div className="p-5 md:p-6 rounded-3xl bg-slate-900 border border-slate-800 shadow-xl space-y-4 animate-fade-in text-center">
+          <div className="grid grid-cols-2 gap-3 max-w-md mx-auto">
+            <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 text-left">
+              <div className="text-[10px] font-bold text-slate-400 uppercase">You Gained</div>
+              <div className="text-2xl font-mono font-black text-emerald-400 mt-0.5">
+                +{myDuelPoints} <span className="text-xs text-slate-400 font-normal">pts</span>
               </div>
+              <div className="text-[11px] text-slate-400 mt-1">Total: {player.score} pts</div>
             </div>
 
-            <div className="text-xs text-slate-400 pt-1">
-              Waiting for Host to advance to the next round...
+            <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 text-right">
+              <div className="text-[10px] font-bold text-slate-400 uppercase">{opponent?.player_name || 'Opponent'} Gained</div>
+              <div className="text-2xl font-mono font-black text-amber-400 mt-0.5">
+                +{oppDuelPoints} <span className="text-xs text-slate-400 font-normal">pts</span>
+              </div>
+              <div className="text-[11px] text-slate-400 mt-1">Total: {opponent?.score || 0} pts</div>
             </div>
           </div>
 
-          {/* Results Navigation Tabs */}
-          <div className="flex items-center justify-center gap-2 border-b border-slate-800 pb-3 flex-wrap">
-            <button
-              onClick={() => setActiveResultsTab('duel')}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
-                activeResultsTab === 'duel'
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                  : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-              }`}
-              id="tab-your-duel"
-            >
-              <Swords className="w-3.5 h-3.5" />
-              <span>Your 1v1 Duel</span>
-            </button>
-
-            <button
-              onClick={() => setActiveResultsTab('group')}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
-                activeResultsTab === 'group'
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                  : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-              }`}
-              id="tab-group-pairs"
-            >
-              <Layers className="w-3.5 h-3.5" />
-              <span>Group Pair Results ({activePairings.length || Math.floor(players.length / 2)} Pairs)</span>
-            </button>
-
-            <button
-              onClick={() => setActiveResultsTab('leaderboard')}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
-                activeResultsTab === 'leaderboard'
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                  : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-              }`}
-              id="tab-leaderboard"
-            >
-              <Trophy className="w-3.5 h-3.5" />
-              <span>Standings</span>
-            </button>
+          <div className="text-xs text-slate-400 pt-1">
+            Waiting for Host to advance to the next round...
           </div>
-
-          {/* Tab Content Display */}
-          {activeResultsTab === 'group' && (
-            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-xl">
-              <PairResultsView
-                roundNumber={game.current_round}
-                pairings={activePairings}
-                players={players}
-                decisions={decisions}
-                highlightPlayerId={player.id}
-                isRevealed={true}
-              />
-            </div>
-          )}
-
-          {activeResultsTab === 'leaderboard' && (
-            <Leaderboard
-              players={players}
-              decisions={decisions}
-              highlightPlayerId={player.id}
-            />
-          )}
-        </div>
-      )}
-
-      {/* 5. Live Standings if round in progress */}
-      {!isRevealed && (
-        <div className="pt-2">
-          <Leaderboard
-            players={players}
-            decisions={[]}
-            highlightPlayerId={player.id}
-          />
         </div>
       )}
     </div>
   );
 };
+

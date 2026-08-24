@@ -639,3 +639,191 @@ export function calculateGameStatistics(
     biggest_betrayer: mostBetraying,
   };
 }
+
+export interface IndividualPlayerDuel {
+  roundNumber: number;
+  opponent: Player | null;
+  myDecision: DecisionType;
+  opponentDecision: DecisionType;
+  myPoints: number;
+  opponentPoints: number;
+  winner: 'you' | 'opponent' | 'tie';
+  outcome: 'both_cooperate' | 'both_betray' | 'p1_betray_p2_cooperate' | 'p2_betray_p1_cooperate' | 'timeout' | 'mixed';
+  headline: string;
+  description: string;
+}
+
+export interface IndividualPlayerAnalysis {
+  player: Player;
+  duels: IndividualPlayerDuel[];
+  primaryOpponent: Player | null;
+  totalMyPoints: number;
+  totalOpponentPoints: number;
+  duelsWon: number;
+  duelsLost: number;
+  duelsTied: number;
+  overallWinner: 'you' | 'opponent' | 'tie';
+  myCooperations: number;
+  myBetrayals: number;
+  oppCooperations: number;
+  oppBetrayals: number;
+  mutualCooperations: number;
+  mutualBetrayals: number;
+}
+
+/**
+ * Compile strictly 1-on-1 head-to-head match outcomes for an individual player
+ */
+export function calculateIndividualPlayerAnalysis(
+  playerId: string,
+  game: Game,
+  players: Player[],
+  allRounds: Round[] = [],
+  allDecisions: Decision[] = []
+): IndividualPlayerAnalysis {
+  const self = players.find((p) => p.id === playerId) || {
+    id: playerId,
+    game_id: game.id,
+    user_id: 'unknown',
+    player_name: 'You',
+    score: 0,
+    status: 'waiting',
+    avatar: '🛡️',
+    joined_at: '',
+    last_seen_at: '',
+  };
+
+  const duels: IndividualPlayerDuel[] = [];
+  const opponentOccurrences = new Map<string, number>();
+
+  let totalMyPoints = 0;
+  let totalOpponentPoints = 0;
+  let duelsWon = 0;
+  let duelsLost = 0;
+  let duelsTied = 0;
+  let myCooperations = 0;
+  let myBetrayals = 0;
+  let oppCooperations = 0;
+  let oppBetrayals = 0;
+  let mutualCooperations = 0;
+  let mutualBetrayals = 0;
+
+  // Process each round in chronological order
+  const roundsToProcess = [...allRounds].sort((a, b) => a.round_number - b.round_number);
+
+  // If no round records exist, create a baseline for completed rounds
+  if (roundsToProcess.length === 0 && game.current_round > 0) {
+    for (let r = 1; r <= game.current_round; r++) {
+      roundsToProcess.push({
+        id: `r_${r}`,
+        game_id: game.id,
+        round_number: r,
+        status: 'revealed',
+        started_at: '',
+        pairings: game.current_pairings || [],
+      });
+    }
+  }
+
+  roundsToProcess.forEach((round) => {
+    const pairings = round.pairings || game.current_pairings || [];
+    const { opponent, isPlayer1 } = findPlayerOpponent(self.id, pairings, players);
+
+    if (opponent) {
+      opponentOccurrences.set(opponent.id, (opponentOccurrences.get(opponent.id) || 0) + 1);
+    }
+
+    const roundDecisions = allDecisions.filter((d) => d.round_id === round.id);
+    const myDecRec = roundDecisions.find((d) => d.player_id === self.id);
+    const oppDecRec = opponent ? roundDecisions.find((d) => d.player_id === opponent.id) : null;
+
+    const myDec = myDecRec?.decision || 'no_decision';
+    const oppDec = oppDecRec?.decision || 'no_decision';
+
+    const outcomeCalc = calculatePairMatchOutcome(
+      isPlayer1 ? myDec : oppDec,
+      isPlayer1 ? oppDec : myDec
+    );
+
+    const myPts = isPlayer1 ? outcomeCalc.p1Points : outcomeCalc.p2Points;
+    const oppPts = isPlayer1 ? outcomeCalc.p2Points : outcomeCalc.p1Points;
+
+    totalMyPoints += myPts;
+    totalOpponentPoints += oppPts;
+
+    let winner: 'you' | 'opponent' | 'tie' = 'tie';
+    if (myPts > oppPts) {
+      winner = 'you';
+      duelsWon++;
+    } else if (oppPts > myPts) {
+      winner = 'opponent';
+      duelsLost++;
+    } else {
+      winner = 'tie';
+      duelsTied++;
+    }
+
+    if (myDec === 'cooperate') myCooperations++;
+    if (myDec === 'betray') myBetrayals++;
+    if (oppDec === 'cooperate') oppCooperations++;
+    if (oppDec === 'betray') oppBetrayals++;
+
+    if (myDec === 'cooperate' && oppDec === 'cooperate') mutualCooperations++;
+    if (myDec === 'betray' && oppDec === 'betray') mutualBetrayals++;
+
+    duels.push({
+      roundNumber: round.round_number,
+      opponent,
+      myDecision: myDec,
+      opponentDecision: oppDec,
+      myPoints: myPts,
+      opponentPoints: oppPts,
+      winner,
+      outcome: outcomeCalc.outcome,
+      headline: outcomeCalc.headline,
+      description: outcomeCalc.description,
+    });
+  });
+
+  // Find most frequent opponent
+  let primaryOpponent: Player | null = null;
+  let maxCount = 0;
+  for (const [oppId, count] of opponentOccurrences.entries()) {
+    if (count > maxCount) {
+      maxCount = count;
+      primaryOpponent = players.find((p) => p.id === oppId) || null;
+    }
+  }
+
+  // Fallback if not found and 2 players in room
+  if (!primaryOpponent && players.length === 2) {
+    primaryOpponent = players.find((p) => p.id !== self.id) || null;
+  }
+
+  let overallWinner: 'you' | 'opponent' | 'tie' = 'tie';
+  if (totalMyPoints > totalOpponentPoints) {
+    overallWinner = 'you';
+  } else if (totalOpponentPoints > totalMyPoints) {
+    overallWinner = 'opponent';
+  } else {
+    overallWinner = 'tie';
+  }
+
+  return {
+    player: self,
+    duels,
+    primaryOpponent,
+    totalMyPoints,
+    totalOpponentPoints,
+    duelsWon,
+    duelsLost,
+    duelsTied,
+    overallWinner,
+    myCooperations,
+    myBetrayals,
+    oppCooperations,
+    oppBetrayals,
+    mutualCooperations,
+    mutualBetrayals,
+  };
+}

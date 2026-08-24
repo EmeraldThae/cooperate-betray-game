@@ -10,7 +10,7 @@ interface MultiPlayerSandboxProps {
   onRefresh?: () => void;
 }
 
-const SAMPLE_NAMES = ['Aung', 'Su Su', 'Mg Mg', 'Thae', 'Kyaw Kyaw', 'Hla Hla', 'Min Min', 'Zin Zin'];
+const SAMPLE_NAMES = ['Alex', 'Jordan', 'Taylor', 'Morgan', 'Casey', 'Riley', 'Sam', 'Avery', 'Devon', 'Quinn'];
 
 export const MultiPlayerSandbox: React.FC<MultiPlayerSandboxProps> = ({
   game,

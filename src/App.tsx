@@ -256,9 +256,10 @@ export default function App() {
         onOpenSupabaseSetup={() => setSetupOpen(true)}
         onTogglePresenter={() => setIsPresenter(!isPresenter)}
         isPresenter={isPresenter}
-        onExitGame={session.gameId ? clearSession : undefined}
+        onExitGame={session.role === 'player' ? undefined : (session.gameId ? clearSession : undefined)}
         roomCode={game?.game_code}
         role={session.role}
+        currentView={view}
       />
 
       {/* Main View Router */}

@@ -62,7 +62,7 @@ export const CreateGame: React.FC<CreateGameProps> = ({ onGameCreated, onBack })
 
         <div>
           <h2 className="text-2xl md:text-3xl font-black text-white">Create New Session</h2>
-          <p className="text-sm text-slate-400 mt-1">Configure your corporate training room parameters.</p>
+          <p className="text-sm text-slate-400 mt-1">Configure your game room parameters.</p>
         </div>
 
         {error && (

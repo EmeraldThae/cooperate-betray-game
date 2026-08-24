@@ -10,14 +10,10 @@ const MODE_STORAGE_KEY = 'tb_backend_mode_override';
 
 export function getActiveBackendMode(): BackendMode {
   if (typeof window !== 'undefined') {
-    // If stale legacy 'demo' is in localStorage, migrate it to server unless explicitly requested
-    const legacy = localStorage.getItem('tb_supabase_mode');
-    if (legacy === 'demo') {
-      localStorage.removeItem('tb_supabase_mode');
-    }
-
+    // Purge any legacy 'demo' overrides so cross-device networking works properly
+    localStorage.removeItem('tb_supabase_mode');
     const override = localStorage.getItem(MODE_STORAGE_KEY) as BackendMode | null;
-    if (override === 'supabase' || override === 'server' || override === 'demo') {
+    if (override === 'supabase' || override === 'server') {
       return override;
     }
   }
@@ -28,7 +24,7 @@ export function getActiveBackendMode(): BackendMode {
 
 export function setActiveBackendMode(mode: BackendMode | null) {
   if (typeof window !== 'undefined') {
-    if (mode) {
+    if (mode && mode !== 'demo') {
       localStorage.setItem(MODE_STORAGE_KEY, mode);
     } else {
       localStorage.removeItem(MODE_STORAGE_KEY);
@@ -41,7 +37,6 @@ export class GameService {
   private static getService() {
     const mode = getActiveBackendMode();
     if (mode === 'supabase') return SupabaseGameService;
-    if (mode === 'demo') return MockGameService;
     return ServerGameService;
   }
 
@@ -58,16 +53,7 @@ export class GameService {
     if (mode === 'supabase') {
       return await SupabaseGameService.createGame(options);
     }
-    if (mode === 'demo') {
-      return await MockGameService.createGame(options);
-    }
-    try {
-      return await ServerGameService.createGame(options);
-    } catch (err: any) {
-      console.warn('[GameService] Server createGame encountered an issue, seamlessly using local game engine:', err);
-      setActiveBackendMode('demo');
-      return await MockGameService.createGame(options);
-    }
+    return await ServerGameService.createGame(options);
   }
 
   static async joinGame(
@@ -83,19 +69,7 @@ export class GameService {
     if (mode === 'supabase') {
       return await SupabaseGameService.joinGame(gameCode, playerName, avatar);
     }
-    if (mode === 'demo') {
-      return await MockGameService.joinGame(gameCode, playerName, avatar);
-    }
-    try {
-      return await ServerGameService.joinGame(gameCode, playerName, avatar);
-    } catch (err: any) {
-      console.warn('[GameService] Server joinGame encountered an issue, trying local game engine:', err);
-      try {
-        return await MockGameService.joinGame(gameCode, playerName, avatar);
-      } catch (mockErr) {
-        throw err; // throw original message if mock also fails
-      }
-    }
+    return await ServerGameService.joinGame(gameCode, playerName, avatar);
   }
 
   static async getGameDetails(gameId: string): Promise<GameDetails> {
@@ -103,15 +77,7 @@ export class GameService {
     if (mode === 'supabase') {
       return await SupabaseGameService.getGameDetails(gameId);
     }
-    if (mode === 'demo') {
-      return await MockGameService.getGameDetails(gameId);
-    }
-    try {
-      return await ServerGameService.getGameDetails(gameId);
-    } catch (err: any) {
-      console.warn('[GameService] Server getGameDetails encountered an issue, trying local game engine:', err);
-      return await MockGameService.getGameDetails(gameId);
-    }
+    return await ServerGameService.getGameDetails(gameId);
   }
 
   static async randomizePairings(gameId: string, roundNumber?: number): Promise<{ pairings: any[] }> {

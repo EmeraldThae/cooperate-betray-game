@@ -142,7 +142,7 @@ export const JoinGame: React.FC<JoinGameProps> = ({ onGameJoined, onBack, initia
               type="text"
               value={playerName}
               onChange={(e) => setPlayerName(e.target.value)}
-              placeholder="e.g. Thae, Alex, Jordan"
+              placeholder="e.g. Alex, Jordan, Taylor"
               className="w-full px-4 py-3.5 rounded-xl bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-indigo-500 font-medium text-base transition"
               maxLength={24}
               autoCapitalize="words"

@@ -149,7 +149,15 @@ function generateGameCode(): string {
 }
 
 function normalizeGameCode(code: string): string {
-  let cleaned = (code || '').toUpperCase().replace(/[\s\-_]+/g, '').trim();
+  let cleaned = (code || '').trim();
+  // If user pasted a full URL or query string
+  if (cleaned.includes('code=') || cleaned.includes('join=') || cleaned.includes('room=')) {
+    const match = cleaned.match(/[?&](?:code|join|room)=([^&#\s]+)/i);
+    if (match && match[1]) {
+      cleaned = decodeURIComponent(match[1]);
+    }
+  }
+  cleaned = cleaned.toUpperCase().replace(/[\s\-_#]+/g, '').trim();
   if (cleaned.startsWith('TB')) {
     cleaned = cleaned.substring(2);
   }
@@ -157,12 +165,48 @@ function normalizeGameCode(code: string): string {
 }
 
 function findGameByCode(inputCode: string): Game | undefined {
-  const targetNorm = normalizeGameCode(inputCode);
+  if (!inputCode) return undefined;
+  const rawInput = inputCode.trim();
+  const targetNorm = normalizeGameCode(rawInput);
+  const plainTarget = targetNorm.replace('TB-', '').toUpperCase();
+
+  // Search in memory
   for (const g of games.values()) {
-    if (normalizeGameCode(g.game_code) === targetNorm) {
+    const gNorm = normalizeGameCode(g.game_code);
+    const gPlain = gNorm.replace('TB-', '').toUpperCase();
+    if (
+      g.id.toLowerCase() === rawInput.toLowerCase() ||
+      g.game_code.toUpperCase() === rawInput.toUpperCase() ||
+      gNorm === targetNorm ||
+      gPlain === plainTarget
+    ) {
       return g;
     }
   }
+
+  // If not found in memory, reload from disk in case of fresh process
+  try {
+    const diskStore = ensureDataFile();
+    for (const [id, g] of Object.entries(diskStore.games)) {
+      const gNorm = normalizeGameCode(g.game_code);
+      const gPlain = gNorm.replace('TB-', '').toUpperCase();
+      if (
+        g.id.toLowerCase() === rawInput.toLowerCase() ||
+        g.game_code.toUpperCase() === rawInput.toUpperCase() ||
+        gNorm === targetNorm ||
+        gPlain === plainTarget
+      ) {
+        games.set(id, g);
+        if (diskStore.players[id]) players.set(id, diskStore.players[id]);
+        if (diskStore.rounds[id]) rounds.set(id, diskStore.rounds[id]);
+        if (diskStore.decisions[id]) decisions.set(id, diskStore.decisions[id]);
+        return g;
+      }
+    }
+  } catch (err) {
+    console.error('Error checking disk store in findGameByCode:', err);
+  }
+
   return undefined;
 }
 
@@ -306,23 +350,27 @@ async function startServer() {
 
       const currentPlayers = players.get(targetGame.id) || [];
       const userId = reqUserId || 'user_' + Math.random().toString(36).substring(2, 9);
-      const trimmedName = String(playerName).trim();
+      let trimmedName = String(playerName).trim();
 
-      // Check name conflict with other user
-      const conflict = currentPlayers.find(
+      // Check name conflict with other user - disambiguate if needed
+      let existingSelf = currentPlayers.find((p) => p.user_id === userId);
+      const otherUserWithSameName = currentPlayers.find(
         (p) => p.player_name.toLowerCase() === trimmedName.toLowerCase() && p.user_id !== userId
       );
-      if (conflict) {
-        res.status(400).json({ error: `The name "${trimmedName}" is already taken by another participant.` });
-        return;
+
+      if (otherUserWithSameName && !existingSelf) {
+        let suffix = 2;
+        while (currentPlayers.some((p) => p.player_name.toLowerCase() === `${trimmedName} (${suffix})`.toLowerCase())) {
+          suffix++;
+        }
+        trimmedName = `${trimmedName} (${suffix})`;
       }
 
-      let existingSelf = currentPlayers.find((p) => p.user_id === userId);
       let playerObj: Player;
 
       if (existingSelf) {
         existingSelf.player_name = trimmedName;
-        existingSelf.avatar = avatar;
+        existingSelf.avatar = avatar || existingSelf.avatar || '🛡️';
         existingSelf.last_seen_at = new Date().toISOString();
         playerObj = existingSelf;
       } else {
