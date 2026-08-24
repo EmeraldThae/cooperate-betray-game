@@ -245,101 +245,111 @@ async function startServer() {
 
   // Create Game
   app.post('/api/games', (req: Request, res: Response) => {
-    const { totalRounds = 5, decisionTimeSeconds = 30, roomName = 'Corporate Dilemma Lab' } = req.body || {};
-    const gameId = 'game_' + Math.random().toString(36).substring(2, 10);
-    const userId = 'host_' + Math.random().toString(36).substring(2, 9);
-    const code = generateGameCode();
-    const now = new Date().toISOString();
+    try {
+      const { totalRounds = 5, decisionTimeSeconds = 30, roomName = 'Corporate Dilemma Lab' } = req.body || {};
+      const gameId = 'game_' + Math.random().toString(36).substring(2, 10);
+      const userId = 'host_' + Math.random().toString(36).substring(2, 9);
+      const code = generateGameCode();
+      const now = new Date().toISOString();
 
-    const game: Game = {
-      id: gameId,
-      game_code: code,
-      host_user_id: userId,
-      status: 'lobby',
-      current_round: 0,
-      total_rounds: Number(totalRounds) || 5,
-      decision_time_seconds: Number(decisionTimeSeconds) || 30,
-      room_name: roomName,
-      created_at: now,
-      updated_at: now,
-    };
+      const game: Game = {
+        id: gameId,
+        game_code: code,
+        host_user_id: userId,
+        status: 'lobby',
+        current_round: 0,
+        total_rounds: Math.max(1, Math.min(50, Number(totalRounds) || 5)),
+        decision_time_seconds: Math.max(10, Math.min(300, Number(decisionTimeSeconds) || 30)),
+        room_name: String(roomName || 'Corporate Workshop').trim(),
+        created_at: now,
+        updated_at: now,
+      };
 
-    games.set(gameId, game);
-    players.set(gameId, []);
-    rounds.set(gameId, []);
-    decisions.set(gameId, []);
+      games.set(gameId, game);
+      players.set(gameId, []);
+      rounds.set(gameId, []);
+      decisions.set(gameId, []);
 
-    saveStoreToDisk();
+      saveStoreToDisk();
 
-    console.log(`[Game Server] Created new game: ${game.game_code} (ID: ${game.id})`);
-    res.json({ game, userId });
+      console.log(`[Game Server] Created new game: ${game.game_code} (ID: ${game.id})`);
+      res.status(200).json({ game, userId });
+    } catch (err: any) {
+      console.error('[Game Server] Error creating game:', err);
+      res.status(500).json({ error: err?.message || 'Failed to create game room on server' });
+    }
   });
 
   // Join Game by Code
   app.post('/api/games/join', (req: Request, res: Response) => {
-    const { gameCode, playerName, avatar = '🛡️', userId: reqUserId } = req.body || {};
+    try {
+      const { gameCode, playerName, avatar = '🛡️', userId: reqUserId } = req.body || {};
 
-    if (!gameCode || !playerName) {
-      res.status(400).json({ error: 'Game Code and Player Name are required.' });
-      return;
+      if (!gameCode || !playerName) {
+        res.status(400).json({ error: 'Game Code and Player Name are required.' });
+        return;
+      }
+
+      const targetGame = findGameByCode(gameCode);
+
+      if (!targetGame) {
+        res.status(404).json({
+          error: `Game code "${String(gameCode).toUpperCase()}" not found. Please verify the code on the host screen or scan the host QR code.`,
+        });
+        return;
+      }
+
+      if (targetGame.status === 'completed') {
+        res.status(400).json({ error: 'This training session has already concluded.' });
+        return;
+      }
+
+      const currentPlayers = players.get(targetGame.id) || [];
+      const userId = reqUserId || 'user_' + Math.random().toString(36).substring(2, 9);
+      const trimmedName = String(playerName).trim();
+
+      // Check name conflict with other user
+      const conflict = currentPlayers.find(
+        (p) => p.player_name.toLowerCase() === trimmedName.toLowerCase() && p.user_id !== userId
+      );
+      if (conflict) {
+        res.status(400).json({ error: `The name "${trimmedName}" is already taken by another participant.` });
+        return;
+      }
+
+      let existingSelf = currentPlayers.find((p) => p.user_id === userId);
+      let playerObj: Player;
+
+      if (existingSelf) {
+        existingSelf.player_name = trimmedName;
+        existingSelf.avatar = avatar;
+        existingSelf.last_seen_at = new Date().toISOString();
+        playerObj = existingSelf;
+      } else {
+        playerObj = {
+          id: 'player_' + Math.random().toString(36).substring(2, 10),
+          game_id: targetGame.id,
+          user_id: userId,
+          player_name: trimmedName,
+          score: 0,
+          status: targetGame.status === 'round_active' ? 'playing' : 'waiting',
+          avatar,
+          joined_at: new Date().toISOString(),
+          last_seen_at: new Date().toISOString(),
+        };
+        currentPlayers.push(playerObj);
+        players.set(targetGame.id, currentPlayers);
+      }
+
+      saveStoreToDisk();
+      broadcastGameUpdate(targetGame.id);
+
+      console.log(`[Game Server] Player "${trimmedName}" joined game ${targetGame.game_code}`);
+      res.status(200).json({ game: targetGame, player: playerObj, userId });
+    } catch (err: any) {
+      console.error('[Game Server] Error joining game:', err);
+      res.status(500).json({ error: err?.message || 'Failed to join game room' });
     }
-
-    const targetGame = findGameByCode(gameCode);
-
-    if (!targetGame) {
-      res.status(404).json({
-        error: `Game code "${gameCode.toUpperCase()}" not found. Please verify the code on the host screen or scan the host QR code.`,
-      });
-      return;
-    }
-
-    if (targetGame.status === 'completed') {
-      res.status(400).json({ error: 'This training session has already concluded.' });
-      return;
-    }
-
-    const currentPlayers = players.get(targetGame.id) || [];
-    const userId = reqUserId || 'user_' + Math.random().toString(36).substring(2, 9);
-    const trimmedName = String(playerName).trim();
-
-    // Check name conflict with other user
-    const conflict = currentPlayers.find(
-      (p) => p.player_name.toLowerCase() === trimmedName.toLowerCase() && p.user_id !== userId
-    );
-    if (conflict) {
-      res.status(400).json({ error: `The name "${trimmedName}" is already taken by another participant.` });
-      return;
-    }
-
-    let existingSelf = currentPlayers.find((p) => p.user_id === userId);
-    let playerObj: Player;
-
-    if (existingSelf) {
-      existingSelf.player_name = trimmedName;
-      existingSelf.avatar = avatar;
-      existingSelf.last_seen_at = new Date().toISOString();
-      playerObj = existingSelf;
-    } else {
-      playerObj = {
-        id: 'player_' + Math.random().toString(36).substring(2, 10),
-        game_id: targetGame.id,
-        user_id: userId,
-        player_name: trimmedName,
-        score: 0,
-        status: targetGame.status === 'round_active' ? 'playing' : 'waiting',
-        avatar,
-        joined_at: new Date().toISOString(),
-        last_seen_at: new Date().toISOString(),
-      };
-      currentPlayers.push(playerObj);
-      players.set(targetGame.id, currentPlayers);
-    }
-
-    saveStoreToDisk();
-    broadcastGameUpdate(targetGame.id);
-
-    console.log(`[Game Server] Player "${trimmedName}" joined game ${targetGame.game_code}`);
-    res.json({ game: targetGame, player: playerObj, userId });
   });
 
   // Get Game Details

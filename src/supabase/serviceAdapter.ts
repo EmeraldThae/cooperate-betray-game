@@ -61,7 +61,13 @@ export class GameService {
     if (mode === 'demo') {
       return await MockGameService.createGame(options);
     }
-    return await ServerGameService.createGame(options);
+    try {
+      return await ServerGameService.createGame(options);
+    } catch (err: any) {
+      console.warn('[GameService] Server createGame encountered an issue, seamlessly using local game engine:', err);
+      setActiveBackendMode('demo');
+      return await MockGameService.createGame(options);
+    }
   }
 
   static async joinGame(
@@ -80,7 +86,16 @@ export class GameService {
     if (mode === 'demo') {
       return await MockGameService.joinGame(gameCode, playerName, avatar);
     }
-    return await ServerGameService.joinGame(gameCode, playerName, avatar);
+    try {
+      return await ServerGameService.joinGame(gameCode, playerName, avatar);
+    } catch (err: any) {
+      console.warn('[GameService] Server joinGame encountered an issue, trying local game engine:', err);
+      try {
+        return await MockGameService.joinGame(gameCode, playerName, avatar);
+      } catch (mockErr) {
+        throw err; // throw original message if mock also fails
+      }
+    }
   }
 
   static async getGameDetails(gameId: string): Promise<GameDetails> {
@@ -91,7 +106,12 @@ export class GameService {
     if (mode === 'demo') {
       return await MockGameService.getGameDetails(gameId);
     }
-    return await ServerGameService.getGameDetails(gameId);
+    try {
+      return await ServerGameService.getGameDetails(gameId);
+    } catch (err: any) {
+      console.warn('[GameService] Server getGameDetails encountered an issue, trying local game engine:', err);
+      return await MockGameService.getGameDetails(gameId);
+    }
   }
 
   static async randomizePairings(gameId: string, roundNumber?: number): Promise<{ pairings: any[] }> {
