@@ -66,27 +66,22 @@ export const DecisionButtons: React.FC<DecisionButtonsProps> = ({
         } ${disabled || isLocked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer active:scale-95'}`}
         id="btn-choice-cooperate"
       >
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 group-hover:scale-110 group-hover:bg-emerald-500/30 transition">
-              <ShieldCheck className="w-8 h-8" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-2xl md:text-3xl font-black tracking-wider text-emerald-400 uppercase">
-                  COOPERATE
-                </span>
-                <span className="hidden sm:inline-block text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-emerald-950 border border-emerald-600 text-emerald-300">
-                  Key: C
-                </span>
-              </div>
-              <p className="text-sm text-slate-300 mt-1 font-medium">
-                Work together and build collective cooperation.
-              </p>
-            </div>
+        <div className="flex items-center gap-4">
+          <div className="w-14 h-14 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 group-hover:scale-110 group-hover:bg-emerald-500/30 transition shrink-0">
+            <ShieldCheck className="w-8 h-8" />
           </div>
-          <div className="hidden sm:block text-right text-xs text-emerald-400/80 font-mono font-semibold">
-            +3 pts (if all cooperate)
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-2xl md:text-3xl font-black tracking-wider text-emerald-400 uppercase">
+                COOPERATE
+              </span>
+              <span className="hidden sm:inline-block text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-emerald-950 border border-emerald-600 text-emerald-300">
+                Key: C
+              </span>
+            </div>
+            <p className="text-xs sm:text-sm text-slate-300 mt-1 font-medium">
+              Work together and build mutual trust.
+            </p>
           </div>
         </div>
       </button>
@@ -95,34 +90,29 @@ export const DecisionButtons: React.FC<DecisionButtonsProps> = ({
       <button
         onClick={() => handleChoice('betray')}
         disabled={disabled || isLocked}
-        className={`w-full group relative overflow-hidden p-6 md:p-8 rounded-2xl border-2 text-left transition-all duration-200 shadow-xl ${
+        className={`w-full group relative overflow-hidden p-5 md:p-7 rounded-2xl border-2 text-left transition-all duration-200 shadow-xl ${
           selectedDecision === 'betray'
             ? 'bg-rose-950 border-rose-400 ring-4 ring-rose-500/30 scale-[1.02]'
             : 'bg-slate-900/90 border-rose-900/60 hover:border-rose-500/80 hover:bg-rose-950/30 hover:scale-[1.01]'
         } ${disabled || isLocked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer active:scale-95'}`}
         id="btn-choice-betray"
       >
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400 group-hover:scale-110 group-hover:bg-rose-500/30 transition">
-              <Zap className="w-8 h-8" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-2xl md:text-3xl font-black tracking-wider text-rose-400 uppercase">
-                  BETRAY
-                </span>
-                <span className="hidden sm:inline-block text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-rose-950 border border-rose-600 text-rose-300">
-                  Key: B
-                </span>
-              </div>
-              <p className="text-sm text-slate-300 mt-1 font-medium">
-                Choose yourself and take the risk.
-              </p>
-            </div>
+        <div className="flex items-center gap-4">
+          <div className="w-14 h-14 rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400 group-hover:scale-110 group-hover:bg-rose-500/30 transition shrink-0">
+            <Zap className="w-8 h-8" />
           </div>
-          <div className="hidden sm:block text-right text-xs text-rose-400/80 font-mono font-semibold">
-            +5 pts (if mixed)
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-2xl md:text-3xl font-black tracking-wider text-rose-400 uppercase">
+                BETRAY
+              </span>
+              <span className="hidden sm:inline-block text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-rose-950 border border-rose-600 text-rose-300">
+                Key: B
+              </span>
+            </div>
+            <p className="text-xs sm:text-sm text-slate-300 mt-1 font-medium">
+              Choose yourself and pursue individual gain.
+            </p>
           </div>
         </div>
       </button>

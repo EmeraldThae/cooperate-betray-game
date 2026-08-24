@@ -65,6 +65,8 @@ export class ServerGameService {
     players: Player[];
     currentRound: Round | null;
     decisions: Decision[];
+    rounds?: Round[];
+    allDecisions?: Decision[];
   }> {
     const res = await fetch(`${this.getBaseUrl()}/api/games/${gameId}`);
     if (!res.ok) {
@@ -147,6 +149,20 @@ export class ServerGameService {
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: 'Failed to add simulated player' }));
       throw new Error(err.error || 'Failed to add simulated player');
+    }
+    return await res.json();
+  }
+
+  static async randomizePairings(gameId: string, roundNumber?: number): Promise<{ pairings: any[] }> {
+    const res = await fetch(`${this.getBaseUrl()}/api/games/${gameId}/randomize-pairs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ roundNumber }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Failed to randomize pairings' }));
+      throw new Error(err.error || 'Failed to randomize pairings');
     }
     return await res.json();
   }

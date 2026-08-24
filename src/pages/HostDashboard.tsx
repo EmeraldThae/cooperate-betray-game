@@ -3,7 +3,22 @@ import { Game, Player, Round, Decision } from '../types';
 import { CountdownTimer } from '../components/CountdownTimer';
 import { PlayerList } from '../components/PlayerList';
 import { Leaderboard } from '../components/Leaderboard';
-import { Shield, Zap, Eye, ArrowRight, Trophy, Users, RefreshCw, Sparkles, CheckCircle2, Tv } from 'lucide-react';
+import { PairResultsView } from '../components/PairResultsView';
+import {
+  Shield,
+  Zap,
+  Eye,
+  ArrowRight,
+  Trophy,
+  Users,
+  RefreshCw,
+  Sparkles,
+  CheckCircle2,
+  Tv,
+  Swords,
+  Shuffle,
+  Layers,
+} from 'lucide-react';
 import { GameService } from '../supabase/serviceAdapter';
 import { playSound } from '../utils/audio';
 
@@ -28,9 +43,13 @@ export const HostDashboard: React.FC<HostDashboardProps> = ({
 }) => {
   const [isRevealing, setIsRevealing] = useState(false);
   const [isAdvancing, setIsAdvancing] = useState(false);
+  const [isReshuffling, setIsReshuffling] = useState(false);
+  const [activeTab, setActiveTab] = useState<'pairs' | 'participants' | 'leaderboard'>('pairs');
 
   const isRevealed = currentRound?.status === 'revealed' || game.status === 'results';
-  const submittedPlayers = players.filter((p) => p.status === 'submitted' || decisions.some((d) => d.player_id === p.id));
+  const submittedPlayers = players.filter(
+    (p) => p.status === 'submitted' || decisions.some((d) => d.player_id === p.id)
+  );
   const submittedCount = submittedPlayers.length;
   const totalCount = players.length;
   const isAllSubmitted = totalCount > 0 && submittedCount >= totalCount;
@@ -38,6 +57,8 @@ export const HostDashboard: React.FC<HostDashboardProps> = ({
   const validDecs = decisions.filter((d) => d.decision !== 'no_decision');
   const coopCount = validDecs.filter((d) => d.decision === 'cooperate').length;
   const betrayCount = validDecs.filter((d) => d.decision === 'betray').length;
+
+  const activePairings = currentRound?.pairings || game.current_pairings || [];
 
   const handleReveal = async () => {
     if (!currentRound) return;
@@ -53,9 +74,21 @@ export const HostDashboard: React.FC<HostDashboardProps> = ({
     }
   };
 
+  const handleReshufflePairs = async () => {
+    setIsReshuffling(true);
+    playSound('click');
+    try {
+      await GameService.randomizePairings(game.id, game.current_round);
+      if (onRefresh) onRefresh();
+    } catch (e) {
+      console.error('Failed to reshuffle pairs:', e);
+    } finally {
+      setIsReshuffling(false);
+    }
+  };
+
   const handleNextRound = async () => {
     if (game.current_round >= game.total_rounds) {
-      // Game is finished
       setIsAdvancing(true);
       playSound('victory');
       try {
@@ -105,9 +138,7 @@ export const HostDashboard: React.FC<HostDashboardProps> = ({
               <CountdownTimer
                 startedAt={currentRound.started_at}
                 durationSeconds={game.decision_time_seconds}
-                onTimeout={() => {
-                  // Timer expired - host can reveal immediately
-                }}
+                onTimeout={() => {}}
               />
             )}
 
@@ -133,9 +164,13 @@ export const HostDashboard: React.FC<HostDashboardProps> = ({
                 {submittedCount} / {totalCount} Players
               </div>
             </div>
-            <div className={`p-2.5 rounded-xl border ${
-              isAllSubmitted ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40' : 'bg-slate-800 text-slate-400 border-slate-700'
-            }`}>
+            <div
+              className={`p-2.5 rounded-xl border ${
+                isAllSubmitted
+                  ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
+                  : 'bg-slate-800 text-slate-400 border-slate-700'
+              }`}
+            >
               <Users className="w-5 h-5" />
             </div>
           </div>
@@ -145,7 +180,11 @@ export const HostDashboard: React.FC<HostDashboardProps> = ({
             <div>
               <div className="text-[11px] uppercase font-bold tracking-wider text-slate-400">Round Stage</div>
               <div className="text-base font-bold text-indigo-300 mt-0.5">
-                {isRevealed ? 'Results Revealed & Scored' : isAllSubmitted ? 'All Submitted - Ready to Reveal' : 'Waiting for Decisions'}
+                {isRevealed
+                  ? 'Results Revealed & Scored'
+                  : isAllSubmitted
+                  ? 'All Submitted - Ready to Reveal'
+                  : 'Waiting for Decisions'}
               </div>
             </div>
             <div className="p-2.5 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/40">
@@ -159,7 +198,7 @@ export const HostDashboard: React.FC<HostDashboardProps> = ({
               <button
                 onClick={handleReveal}
                 disabled={isRevealing || totalCount === 0}
-                className="w-full h-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-black text-sm shadow-xl shadow-indigo-600/30 flex items-center justify-center gap-2 transition disabled:opacity-50 active:scale-95"
+                className="w-full h-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-black text-sm shadow-xl shadow-indigo-600/30 flex items-center justify-center gap-2 transition disabled:opacity-50 active:scale-95 cursor-pointer"
                 id="btn-host-reveal-results"
               >
                 {isRevealing ? (
@@ -173,7 +212,7 @@ export const HostDashboard: React.FC<HostDashboardProps> = ({
               <button
                 onClick={handleNextRound}
                 disabled={isAdvancing}
-                className="w-full h-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-sm shadow-xl shadow-emerald-600/30 flex items-center justify-center gap-2 transition disabled:opacity-50 active:scale-95"
+                className="w-full h-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-sm shadow-xl shadow-emerald-600/30 flex items-center justify-center gap-2 transition disabled:opacity-50 active:scale-95 cursor-pointer"
                 id="btn-host-next-round"
               >
                 {isAdvancing ? (
@@ -192,13 +231,13 @@ export const HostDashboard: React.FC<HostDashboardProps> = ({
         </div>
       </div>
 
-      {/* Revealed Breakdown Banner if revealed */}
+      {/* Decision Summary Counters if revealed */}
       {isRevealed && (
         <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 shadow-xl space-y-4 animate-fade-in">
           <div className="flex items-center justify-between border-b border-slate-800 pb-3">
             <h3 className="font-bold text-white text-base flex items-center gap-2">
               <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-              Round {game.current_round} Decision Breakdown
+              Round {game.current_round} Overall Decision Breakdown
             </h3>
             <span className="text-xs font-mono font-semibold text-slate-400">
               {coopCount} Cooperated • {betrayCount} Betrayed
@@ -235,38 +274,116 @@ export const HostDashboard: React.FC<HostDashboardProps> = ({
         </div>
       )}
 
-      {/* Main Grid: Player Submissions & Live Leaderboard */}
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-start">
-        {/* Left: Player Submissions Matrix */}
-        <div className="md:col-span-7 bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-            <h3 className="font-bold text-lg text-white flex items-center gap-2">
-              <Users className="w-5 h-5 text-indigo-400" /> Participant Status
-            </h3>
+      {/* Main View Tabs (Group Pairs, Participant Roster, Live Leaderboard) */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setActiveTab('pairs')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                activeTab === 'pairs'
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                  : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+              }`}
+              id="btn-tab-pairs"
+            >
+              <Swords className="w-3.5 h-3.5" />
+              <span>2-Player Group Matchups ({activePairings.length} Pairs)</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('participants')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                activeTab === 'participants'
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                  : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+              }`}
+              id="btn-tab-participants"
+            >
+              <Users className="w-3.5 h-3.5" />
+              <span>Participant Roster</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('leaderboard')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                activeTab === 'leaderboard'
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                  : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+              }`}
+              id="btn-tab-leaderboard"
+            >
+              <Trophy className="w-3.5 h-3.5" />
+              <span>Standings</span>
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {!isRevealed && players.length >= 2 && (
+              <button
+                onClick={handleReshufflePairs}
+                disabled={isReshuffling}
+                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-indigo-300 text-xs font-bold flex items-center gap-1.5 border border-slate-700 transition"
+                id="btn-host-reshuffle-pairs"
+              >
+                <Shuffle className={`w-3.5 h-3.5 ${isReshuffling ? 'animate-spin' : ''}`} />
+                <span>Reshuffle Random Pairs</span>
+              </button>
+            )}
+
             {onRefresh && (
               <button
                 onClick={onRefresh}
-                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition"
+                className="p-2 text-slate-400 hover:text-white rounded-xl bg-slate-900 border border-slate-800 transition"
+                title="Refresh State"
               >
                 <RefreshCw className="w-4 h-4" />
               </button>
             )}
           </div>
-
-          <PlayerList
-            players={players}
-            decisions={decisions}
-            showDecisions={isRevealed}
-          />
         </div>
 
-        {/* Right: Real-time Leaderboard */}
-        <div className="md:col-span-5">
-          <Leaderboard
-            players={players}
-            decisions={isRevealed ? decisions : []}
-          />
-        </div>
+        {/* Tab 1: Group Pairs View */}
+        {activeTab === 'pairs' && (
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-6">
+            <PairResultsView
+              roundNumber={game.current_round}
+              pairings={activePairings}
+              players={players}
+              decisions={decisions}
+              isRevealed={isRevealed}
+            />
+          </div>
+        )}
+
+        {/* Tab 2: Participant Roster */}
+        {activeTab === 'participants' && (
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-start">
+            <div className="md:col-span-7 bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
+              <PlayerList
+                players={players}
+                decisions={decisions}
+                showDecisions={isRevealed}
+              />
+            </div>
+            <div className="md:col-span-5">
+              <Leaderboard
+                players={players}
+                decisions={isRevealed ? decisions : []}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Tab 3: Standings */}
+        {activeTab === 'leaderboard' && (
+          <div className="max-w-2xl mx-auto">
+            <Leaderboard
+              players={players}
+              decisions={isRevealed ? decisions : []}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

@@ -112,15 +112,18 @@ export const Lobby: React.FC<LobbyProps> = ({
   };
 
   // Generate random 2-player pairs for the room
-  const handleGeneratePairs = () => {
+  const handleGeneratePairs = async () => {
     if (players.length < 2) return;
+    setIsRandomizing(true);
     playSound('click');
-    const shuffled = [...players].sort(() => 0.5 - Math.random());
-    const newPairs: Array<[Player, Player]> = [];
-    for (let i = 0; i < shuffled.length - 1; i += 2) {
-      newPairs.push([shuffled[i], shuffled[i + 1]]);
+    try {
+      await GameService.randomizePairings(game.id, 1);
+      if (onRefresh) onRefresh();
+    } catch (e) {
+      console.error('Failed to randomize pairs:', e);
+    } finally {
+      setIsRandomizing(false);
     }
-    setPairings(newPairs);
   };
 
   const isHost = role === 'host';
@@ -281,21 +284,38 @@ export const Lobby: React.FC<LobbyProps> = ({
           )}
 
           {/* If pairings have been generated for larger groups */}
-          {pairings.length > 0 && players.length > 2 && (
+          {((game.current_pairings && game.current_pairings.length > 0) || pairings.length > 0) && players.length > 2 && (
             <div className="p-4 rounded-2xl bg-slate-950/80 border border-indigo-500/30 space-y-2">
               <div className="text-xs font-bold text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
                 <Swords className="w-3.5 h-3.5 text-amber-400" />
-                <span>Active 2-Player Breakout Pairings</span>
+                <span>Active 2-Player Breakout Pairings ({game.current_pairings?.length || pairings.length} Pairs)</span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                {pairings.map((pair, idx) => (
+                {(game.current_pairings && game.current_pairings.length > 0
+                  ? game.current_pairings.map((p) => {
+                      const p1 = players.find((pl) => pl.id === p.player1_id);
+                      const p2 = players.find((pl) => pl.id === p.player2_id);
+                      return {
+                        p1Name: p1?.player_name || 'Player 1',
+                        p1Avatar: p1?.avatar || '🛡️',
+                        p2Name: p2?.player_name || 'Player 2',
+                        p2Avatar: p2?.avatar || '⚡',
+                      };
+                    })
+                  : pairings.map((pair) => ({
+                      p1Name: pair[0].player_name,
+                      p1Avatar: pair[0].avatar || '🛡️',
+                      p2Name: pair[1].player_name,
+                      p2Avatar: pair[1].avatar || '⚡',
+                    }))
+                ).map((pair, idx) => (
                   <div
                     key={idx}
                     className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between text-xs font-medium text-slate-200"
                   >
-                    <span>{pair[0].avatar} {pair[0].player_name}</span>
+                    <span>{pair.p1Avatar} {pair.p1Name}</span>
                     <span className="text-[10px] font-black text-rose-400 px-1.5 py-0.5 rounded bg-slate-800">VS</span>
-                    <span>{pair[1].avatar} {pair[1].player_name}</span>
+                    <span>{pair.p2Avatar} {pair.p2Name}</span>
                   </div>
                 ))}
               </div>

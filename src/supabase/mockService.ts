@@ -1,4 +1,4 @@
-import { Decision, DecisionType, Game, Player, Round } from '../types';
+import { Decision, DecisionType, Game, GameDetails, Player, Round } from '../types';
 import { generateGameCode } from '../utils/gameLogic';
 
 interface MockStore {
@@ -93,11 +93,17 @@ export class MockGameService {
     userId: string;
   }> {
     const store = getStore();
-    const formattedCode = gameCode.toUpperCase().trim();
-    const game = Object.values(store.games).find((g) => g.game_code === formattedCode);
+    const rawClean = gameCode.toUpperCase().replace(/[\s\-_]+/g, '').trim();
+    const targetSuffix = rawClean.startsWith('TB') ? rawClean.substring(2) : rawClean;
+    const formattedCode = `TB-${targetSuffix}`;
+    const game = Object.values(store.games).find((g) => {
+      const gClean = g.game_code.toUpperCase().replace(/[\s\-_]+/g, '');
+      const gSuffix = gClean.startsWith('TB') ? gClean.substring(2) : gClean;
+      return gSuffix === targetSuffix || g.game_code === formattedCode;
+    });
 
     if (!game) {
-      throw new Error(`Game code "${formattedCode}" not found in current room registry.`);
+      throw new Error(`Game code "${formattedCode}" not found. Please verify the code or check your connection.`);
     }
 
     if (game.status === 'completed') {
@@ -166,12 +172,7 @@ export class MockGameService {
     return simulatedPlayer;
   }
 
-  static async getGameDetails(gameId: string): Promise<{
-    game: Game;
-    players: Player[];
-    currentRound: Round | null;
-    decisions: Decision[];
-  }> {
+  static async getGameDetails(gameId: string): Promise<GameDetails> {
     const store = getStore();
     const game = store.games[gameId];
     if (!game) throw new Error('Game not found.');
@@ -187,7 +188,45 @@ export class MockGameService {
       players: [...players].sort((a, b) => b.score - a.score),
       currentRound,
       decisions: currentDecisions,
+      rounds,
+      allDecisions: allDecs,
     };
+  }
+
+  static async randomizePairings(gameId: string, roundNumber?: number): Promise<{ pairings: any[] }> {
+    const store = getStore();
+    const game = store.games[gameId];
+    if (!game) throw new Error('Game not found');
+
+    const pList = store.players[gameId] || [];
+    const rNum = roundNumber || game.current_round || 1;
+    const shuffled = [...pList].sort(() => 0.5 - Math.random());
+    const pairs: any[] = [];
+    for (let i = 0; i < shuffled.length - 1; i += 2) {
+      pairs.push({
+        id: `pair_${rNum}_${Math.random().toString(36).substring(2, 8)}`,
+        round_number: rNum,
+        player1_id: shuffled[i].id,
+        player2_id: shuffled[i + 1].id,
+      });
+    }
+    if (shuffled.length % 2 !== 0 && shuffled.length >= 3) {
+      pairs.push({
+        id: `pair_${rNum}_odd_${Math.random().toString(36).substring(2, 8)}`,
+        round_number: rNum,
+        player1_id: shuffled[shuffled.length - 1].id,
+        player2_id: shuffled[0].id,
+      });
+    }
+
+    game.current_pairings = pairs;
+    const rList = store.rounds[gameId] || [];
+    const currentRound = rList.find((r) => r.round_number === rNum);
+    if (currentRound) {
+      currentRound.pairings = pairs;
+    }
+    saveStore(store);
+    return { pairings: pairs };
   }
 
   static async startRound(gameId: string, roundNumber: number): Promise<Round> {

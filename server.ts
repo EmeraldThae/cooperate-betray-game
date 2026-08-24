@@ -1,6 +1,14 @@
 import express, { Request, Response } from 'express';
 import path from 'path';
+import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
+
+interface PlayerPairing {
+  id: string;
+  round_number?: number;
+  player1_id: string;
+  player2_id: string;
+}
 
 interface Game {
   id: string;
@@ -11,6 +19,7 @@ interface Game {
   total_rounds: number;
   decision_time_seconds: number;
   room_name: string;
+  current_pairings?: PlayerPairing[];
   created_at: string;
   updated_at: string;
 }
@@ -32,6 +41,7 @@ interface Round {
   game_id: string;
   round_number: number;
   status: 'active' | 'revealed' | 'completed';
+  pairings?: PlayerPairing[];
   started_at: string;
   ended_at?: string;
   revealed_at?: string;
@@ -48,12 +58,85 @@ interface Decision {
   submitted_at: string;
 }
 
-// In-Memory Game Store
-const games = new Map<string, Game>();
-const players = new Map<string, Player[]>();
-const rounds = new Map<string, Round[]>();
-const decisions = new Map<string, Decision[]>();
+interface DatabaseStore {
+  games: Record<string, Game>;
+  players: Record<string, Player[]>;
+  rounds: Record<string, Round[]>;
+  decisions: Record<string, Decision[]>;
+}
+
+// Persistent Storage Setup
+const DATA_DIR = path.join(process.cwd(), 'data');
+const DATA_FILE = path.join(DATA_DIR, 'gamestore.json');
+
+function ensureDataFile(): DatabaseStore {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    if (fs.existsSync(DATA_FILE)) {
+      const content = fs.readFileSync(DATA_FILE, 'utf-8');
+      const parsed = JSON.parse(content);
+      return {
+        games: parsed.games || {},
+        players: parsed.players || {},
+        rounds: parsed.rounds || {},
+        decisions: parsed.decisions || {},
+      };
+    }
+  } catch (err) {
+    console.error('Error reading persistent store, creating fresh one:', err);
+  }
+  return { games: {}, players: {}, rounds: {}, decisions: {} };
+}
+
+const initialStore = ensureDataFile();
+const games = new Map<string, Game>(Object.entries(initialStore.games));
+const players = new Map<string, Player[]>(Object.entries(initialStore.players));
+const rounds = new Map<string, Round[]>(Object.entries(initialStore.rounds));
+const decisions = new Map<string, Decision[]>(Object.entries(initialStore.decisions));
 const sseClients = new Map<string, Set<Response>>();
+
+function saveStoreToDisk() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    const store: DatabaseStore = {
+      games: Object.fromEntries(games.entries()),
+      players: Object.fromEntries(players.entries()),
+      rounds: Object.fromEntries(rounds.entries()),
+      decisions: Object.fromEntries(decisions.entries()),
+    };
+    fs.writeFileSync(DATA_FILE, JSON.stringify(store, null, 2), 'utf-8');
+  } catch (err) {
+    console.error('Failed to persist store to disk:', err);
+  }
+}
+
+function generatePairings(playerList: Player[], roundNumber: number = 1): PlayerPairing[] {
+  if (playerList.length < 2) return [];
+  const shuffled = [...playerList].sort(() => 0.5 - Math.random());
+  const pairs: PlayerPairing[] = [];
+  for (let i = 0; i < shuffled.length - 1; i += 2) {
+    pairs.push({
+      id: `pair_${roundNumber}_${Math.random().toString(36).substring(2, 8)}`,
+      round_number: roundNumber,
+      player1_id: shuffled[i].id,
+      player2_id: shuffled[i + 1].id,
+    });
+  }
+  if (shuffled.length % 2 !== 0 && shuffled.length >= 3) {
+    // Pair odd player with the first player
+    pairs.push({
+      id: `pair_${roundNumber}_odd_${Math.random().toString(36).substring(2, 8)}`,
+      round_number: roundNumber,
+      player1_id: shuffled[shuffled.length - 1].id,
+      player2_id: shuffled[0].id,
+    });
+  }
+  return pairs;
+}
 
 function generateGameCode(): string {
   const allowedChars = '2346789ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -73,6 +156,16 @@ function normalizeGameCode(code: string): string {
   return `TB-${cleaned}`;
 }
 
+function findGameByCode(inputCode: string): Game | undefined {
+  const targetNorm = normalizeGameCode(inputCode);
+  for (const g of games.values()) {
+    if (normalizeGameCode(g.game_code) === targetNorm) {
+      return g;
+    }
+  }
+  return undefined;
+}
+
 function broadcastGameUpdate(gameId: string) {
   const clients = sseClients.get(gameId);
   if (!clients || clients.size === 0) return;
@@ -83,12 +176,16 @@ function broadcastGameUpdate(gameId: string) {
   const currentRound = game ? rList.find((r) => r.round_number === game.current_round) || null : null;
   const dList = currentRound ? (decisions.get(gameId) || []).filter((d) => d.round_id === currentRound.id) : [];
 
+  const allDList = decisions.get(gameId) || [];
+
   const payload = JSON.stringify({
     type: 'UPDATE',
     game,
     players: [...pList].sort((a, b) => b.score - a.score),
     currentRound,
     decisions: dList,
+    rounds: rList,
+    allDecisions: allDList,
     timestamp: Date.now(),
   });
 
@@ -107,9 +204,43 @@ async function startServer() {
 
   app.use(express.json());
 
-  // Health check
+  // Enable CORS headers for API
+  app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    if (req.method === 'OPTIONS') {
+      res.sendStatus(200);
+      return;
+    }
+    next();
+  });
+
+  // Health check & stats
   app.get('/api/health', (req: Request, res: Response) => {
-    res.json({ status: 'ok', activeGames: games.size });
+    res.json({
+      status: 'ok',
+      activeGames: games.size,
+      allGameCodes: Array.from(games.values()).map((g) => g.game_code),
+    });
+  });
+
+  // Check code availability / details
+  app.get('/api/games/check/:gameCode', (req: Request, res: Response) => {
+    const { gameCode } = req.params;
+    const targetGame = findGameByCode(gameCode);
+    if (!targetGame) {
+      res.status(404).json({ exists: false, error: `Game code "${gameCode.toUpperCase()}" was not found.` });
+      return;
+    }
+    const currentPlayers = players.get(targetGame.id) || [];
+    res.json({
+      exists: true,
+      gameCode: targetGame.game_code,
+      status: targetGame.status,
+      roomName: targetGame.room_name,
+      playerCount: currentPlayers.length,
+    });
   });
 
   // Create Game
@@ -138,6 +269,9 @@ async function startServer() {
     rounds.set(gameId, []);
     decisions.set(gameId, []);
 
+    saveStoreToDisk();
+
+    console.log(`[Game Server] Created new game: ${game.game_code} (ID: ${game.id})`);
     res.json({ game, userId });
   });
 
@@ -150,18 +284,12 @@ async function startServer() {
       return;
     }
 
-    const normalizedCode = normalizeGameCode(gameCode);
-    let targetGame: Game | undefined;
-
-    for (const g of games.values()) {
-      if (normalizeGameCode(g.game_code) === normalizedCode) {
-        targetGame = g;
-        break;
-      }
-    }
+    const targetGame = findGameByCode(gameCode);
 
     if (!targetGame) {
-      res.status(404).json({ error: `Game code "${gameCode.toUpperCase()}" not found. Please check your room code.` });
+      res.status(404).json({
+        error: `Game code "${gameCode.toUpperCase()}" not found. Please verify the code on the host screen or scan the host QR code.`,
+      });
       return;
     }
 
@@ -207,7 +335,10 @@ async function startServer() {
       players.set(targetGame.id, currentPlayers);
     }
 
+    saveStoreToDisk();
     broadcastGameUpdate(targetGame.id);
+
+    console.log(`[Game Server] Player "${trimmedName}" joined game ${targetGame.game_code}`);
     res.json({ game: targetGame, player: playerObj, userId });
   });
 
@@ -225,12 +356,52 @@ async function startServer() {
     const currentRound = rList.find((r) => r.round_number === game.current_round) || null;
     const dList = currentRound ? (decisions.get(gameId) || []).filter((d) => d.round_id === currentRound.id) : [];
 
+    const allDList = decisions.get(gameId) || [];
+
     res.json({
       game,
       players: [...pList].sort((a, b) => b.score - a.score),
       currentRound,
       decisions: dList,
+      rounds: rList,
+      allDecisions: allDList,
     });
+  });
+
+  // Randomize / Set Pairs
+  app.post('/api/games/:gameId/randomize-pairs', (req: Request, res: Response) => {
+    const { gameId } = req.params;
+    const { roundNumber, customPairs } = req.body || {};
+    const game = games.get(gameId);
+
+    if (!game) {
+      res.status(404).json({ error: 'Game not found' });
+      return;
+    }
+
+    const pList = players.get(gameId) || [];
+    const rNum = Number(roundNumber) || (game.current_round || 1);
+    
+    let pairings: PlayerPairing[] = [];
+    if (customPairs && Array.isArray(customPairs) && customPairs.length > 0) {
+      pairings = customPairs;
+    } else {
+      pairings = generatePairings(pList, rNum);
+    }
+
+    game.current_pairings = pairings;
+    game.updated_at = new Date().toISOString();
+
+    const rList = rounds.get(gameId) || [];
+    const currentRound = rList.find((r) => r.round_number === rNum);
+    if (currentRound) {
+      currentRound.pairings = pairings;
+    }
+
+    saveStoreToDisk();
+    broadcastGameUpdate(gameId);
+    console.log(`[Game Server] Generated ${pairings.length} random pairs for game ${game.game_code}`);
+    res.json({ success: true, pairings });
   });
 
   // Start Round
@@ -257,6 +428,14 @@ async function startServer() {
       p.status = 'playing';
     });
 
+    // Ensure 2-player random pairings for this round
+    let rPairings = game.current_pairings;
+    // Generate fresh pairings per round if not already generated or if round changes
+    if (!rPairings || rPairings.length === 0 || rPairings[0]?.round_number !== rNum) {
+      rPairings = generatePairings(pList, rNum);
+      game.current_pairings = rPairings;
+    }
+
     const rList = rounds.get(gameId) || [];
     let round = rList.find((r) => r.round_number === rNum);
     if (!round) {
@@ -265,17 +444,20 @@ async function startServer() {
         game_id: gameId,
         round_number: rNum,
         status: 'active',
+        pairings: rPairings,
         started_at: now,
       };
       rList.push(round);
     } else {
       round.status = 'active';
+      round.pairings = rPairings;
       round.started_at = now;
       round.revealed_at = undefined;
       round.ended_at = undefined;
     }
     rounds.set(gameId, rList);
 
+    saveStoreToDisk();
     broadcastGameUpdate(gameId);
     res.json(round);
   });
@@ -318,6 +500,7 @@ async function startServer() {
       player.status = 'submitted';
     }
 
+    saveStoreToDisk();
     broadcastGameUpdate(gameId);
     res.json(existing);
   });
@@ -358,40 +541,93 @@ async function startServer() {
       }
     });
 
-    const roundDecs = dList.filter((d) => d.round_id === roundId);
-    const validDecs = roundDecs.filter((d) => d.decision !== 'no_decision');
-    const coopCount = validDecs.filter((d) => d.decision === 'cooperate').length;
-    const betrayCount = validDecs.filter((d) => d.decision === 'betray').length;
+    const activePairings = round.pairings || game.current_pairings || generatePairings(pList, round.round_number);
+    const scoredPlayerIds = new Set<string>();
 
-    roundDecs.forEach((dec) => {
-      let pts = 0;
-      if (dec.decision === 'no_decision') {
-        pts = 0;
-      } else if (betrayCount === 0 && coopCount > 0) {
-        pts = 3;
-      } else if (coopCount === 0 && betrayCount > 0) {
-        pts = 1;
-      } else {
-        pts = dec.decision === 'betray' ? 5 : 0;
+    // 1v1 Pairwise Decision Matrix Scoring
+    activePairings.forEach((pair) => {
+      const dec1 = dList.find((d) => d.round_id === roundId && d.player_id === pair.player1_id);
+      const dec2 = dList.find((d) => d.round_id === roundId && d.player_id === pair.player2_id);
+
+      const d1Val: DecisionType = dec1?.decision || 'no_decision';
+      const d2Val: DecisionType = dec2?.decision || 'no_decision';
+
+      let pts1 = 0;
+      let pts2 = 0;
+
+      if (d1Val === 'no_decision' && d2Val === 'no_decision') {
+        pts1 = 0;
+        pts2 = 0;
+      } else if (d1Val === 'no_decision') {
+        pts1 = 0;
+        pts2 = d2Val === 'cooperate' ? 3 : 5;
+      } else if (d2Val === 'no_decision') {
+        pts1 = d1Val === 'cooperate' ? 3 : 5;
+        pts2 = 0;
+      } else if (d1Val === 'cooperate' && d2Val === 'cooperate') {
+        pts1 = 3;
+        pts2 = 3;
+      } else if (d1Val === 'betray' && d2Val === 'cooperate') {
+        pts1 = 5;
+        pts2 = 0;
+      } else if (d1Val === 'cooperate' && d2Val === 'betray') {
+        pts1 = 0;
+        pts2 = 5;
+      } else if (d1Val === 'betray' && d2Val === 'betray') {
+        pts1 = 1;
+        pts2 = 1;
       }
-      dec.points = pts;
+
+      if (dec1) {
+        dec1.points = pts1;
+        scoredPlayerIds.add(pair.player1_id);
+      }
+      if (dec2) {
+        dec2.points = pts2;
+        scoredPlayerIds.add(pair.player2_id);
+      }
 
       if (round.status !== 'revealed' && round.status !== 'completed') {
-        const player = pList.find((p) => p.id === dec.player_id);
-        if (player) {
-          player.score += pts;
-          player.status = 'ready';
+        const p1 = pList.find((p) => p.id === pair.player1_id);
+        const p2 = pList.find((p) => p.id === pair.player2_id);
+        if (p1) {
+          p1.score += pts1;
+          p1.status = 'ready';
+        }
+        if (p2) {
+          p2.score += pts2;
+          p2.status = 'ready';
         }
       }
     });
 
+    // Fallback for any unpaired players
+    dList
+      .filter((d) => d.round_id === roundId)
+      .forEach((dec) => {
+        if (!scoredPlayerIds.has(dec.player_id)) {
+          const pts = dec.decision === 'cooperate' ? 3 : dec.decision === 'betray' ? 5 : 0;
+          dec.points = pts;
+          if (round.status !== 'revealed' && round.status !== 'completed') {
+            const player = pList.find((p) => p.id === dec.player_id);
+            if (player) {
+              player.score += pts;
+              player.status = 'ready';
+            }
+          }
+        }
+      });
+
     round.status = 'revealed';
+    round.pairings = activePairings;
     round.revealed_at = now;
     round.ended_at = now;
     game.status = 'results';
+    game.current_pairings = activePairings;
     game.updated_at = now;
 
     decisions.set(gameId, dList);
+    saveStoreToDisk();
     broadcastGameUpdate(gameId);
 
     res.json({ success: true, roundId });
@@ -415,6 +651,7 @@ async function startServer() {
       p.status = 'completed';
     });
 
+    saveStoreToDisk();
     broadcastGameUpdate(gameId);
     res.json({ success: true });
   });
@@ -442,6 +679,7 @@ async function startServer() {
       p.status = 'waiting';
     });
 
+    saveStoreToDisk();
     broadcastGameUpdate(gameId);
     res.json({ success: true });
   });
@@ -470,6 +708,7 @@ async function startServer() {
     pList.push(botPlayer);
     players.set(gameId, pList);
 
+    saveStoreToDisk();
     broadcastGameUpdate(gameId);
     res.json(botPlayer);
   });
@@ -507,6 +746,7 @@ async function startServer() {
     });
 
     decisions.set(gameId, dList);
+    saveStoreToDisk();
     broadcastGameUpdate(gameId);
     res.json({ success: true });
   });

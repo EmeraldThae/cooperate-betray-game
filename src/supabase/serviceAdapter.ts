@@ -2,7 +2,7 @@ import { getSupabaseCredentials } from './client';
 import { SupabaseGameService } from './gameService';
 import { ServerGameService } from './serverGameService';
 import { MockGameService } from './mockService';
-import { Decision, DecisionType, Game, Player, Round } from '../types';
+import { Decision, DecisionType, Game, GameDetails, Player, Round } from '../types';
 
 export type BackendMode = 'server' | 'supabase' | 'demo';
 
@@ -10,11 +10,18 @@ const MODE_STORAGE_KEY = 'tb_backend_mode_override';
 
 export function getActiveBackendMode(): BackendMode {
   if (typeof window !== 'undefined') {
+    // If stale legacy 'demo' is in localStorage, migrate it to server unless explicitly requested
+    const legacy = localStorage.getItem('tb_supabase_mode');
+    if (legacy === 'demo') {
+      localStorage.removeItem('tb_supabase_mode');
+    }
+
     const override = localStorage.getItem(MODE_STORAGE_KEY) as BackendMode | null;
-    if (override === 'demo' || override === 'supabase' || override === 'server') {
+    if (override === 'supabase' || override === 'server' || override === 'demo') {
       return override;
     }
   }
+
   const { isConfigured } = getSupabaseCredentials();
   return isConfigured ? 'supabase' : 'server';
 }
@@ -47,19 +54,14 @@ export class GameService {
     decisionTimeSeconds: number;
     roomName?: string;
   }): Promise<{ game: Game; userId: string }> {
-    try {
-      return await this.getService().createGame(options);
-    } catch (err: any) {
-      if (this.isLiveSupabase()) {
-        console.warn('Live Supabase failed, falling back to server game service:', err);
-        return await ServerGameService.createGame(options);
-      }
-      try {
-        return await ServerGameService.createGame(options);
-      } catch {
-        return await MockGameService.createGame(options);
-      }
+    const mode = getActiveBackendMode();
+    if (mode === 'supabase') {
+      return await SupabaseGameService.createGame(options);
     }
+    if (mode === 'demo') {
+      return await MockGameService.createGame(options);
+    }
+    return await ServerGameService.createGame(options);
   }
 
   static async joinGame(
@@ -71,44 +73,44 @@ export class GameService {
     player: Player;
     userId: string;
   }> {
-    try {
-      return await this.getService().joinGame(gameCode, playerName, avatar);
-    } catch (err: any) {
-      if (this.isLiveSupabase()) {
-        console.warn('Live Supabase join failed, attempting server fallback:', err);
-        return await ServerGameService.joinGame(gameCode, playerName, avatar);
-      }
-      try {
-        return await ServerGameService.joinGame(gameCode, playerName, avatar);
-      } catch {
-        return await MockGameService.joinGame(gameCode, playerName, avatar);
-      }
+    const mode = getActiveBackendMode();
+    if (mode === 'supabase') {
+      return await SupabaseGameService.joinGame(gameCode, playerName, avatar);
     }
+    if (mode === 'demo') {
+      return await MockGameService.joinGame(gameCode, playerName, avatar);
+    }
+    return await ServerGameService.joinGame(gameCode, playerName, avatar);
   }
 
-  static async getGameDetails(gameId: string): Promise<{
-    game: Game;
-    players: Player[];
-    currentRound: Round | null;
-    decisions: Decision[];
-  }> {
-    try {
-      return await this.getService().getGameDetails(gameId);
-    } catch (err: any) {
-      try {
-        return await ServerGameService.getGameDetails(gameId);
-      } catch {
-        return await MockGameService.getGameDetails(gameId);
-      }
+  static async getGameDetails(gameId: string): Promise<GameDetails> {
+    const mode = getActiveBackendMode();
+    if (mode === 'supabase') {
+      return await SupabaseGameService.getGameDetails(gameId);
     }
+    if (mode === 'demo') {
+      return await MockGameService.getGameDetails(gameId);
+    }
+    return await ServerGameService.getGameDetails(gameId);
+  }
+
+  static async randomizePairings(gameId: string, roundNumber?: number): Promise<{ pairings: any[] }> {
+    const mode = getActiveBackendMode();
+    if (mode === 'demo') {
+      return await MockGameService.randomizePairings(gameId, roundNumber);
+    }
+    return await ServerGameService.randomizePairings(gameId, roundNumber);
   }
 
   static async startRound(gameId: string, roundNumber: number): Promise<Round> {
-    try {
-      return await this.getService().startRound(gameId, roundNumber);
-    } catch {
-      return await ServerGameService.startRound(gameId, roundNumber);
+    const mode = getActiveBackendMode();
+    if (mode === 'supabase') {
+      return await SupabaseGameService.startRound(gameId, roundNumber);
     }
+    if (mode === 'demo') {
+      return await MockGameService.startRound(gameId, roundNumber);
+    }
+    return await ServerGameService.startRound(gameId, roundNumber);
   }
 
   static async submitDecision(
@@ -117,47 +119,59 @@ export class GameService {
     decision: DecisionType,
     gameId?: string
   ): Promise<Decision> {
-    try {
-      return await this.getService().submitDecision(roundId, playerId, decision, gameId);
-    } catch {
-      return await ServerGameService.submitDecision(roundId, playerId, decision, gameId);
+    const mode = getActiveBackendMode();
+    if (mode === 'supabase') {
+      return await SupabaseGameService.submitDecision(roundId, playerId, decision);
     }
+    if (mode === 'demo') {
+      return await MockGameService.submitDecision(roundId, playerId, decision);
+    }
+    return await ServerGameService.submitDecision(roundId, playerId, decision, gameId);
   }
 
   static async revealResults(roundId: string, gameId: string): Promise<any> {
-    try {
-      return await this.getService().revealResults(roundId, gameId);
-    } catch {
-      return await ServerGameService.revealResults(roundId, gameId);
+    const mode = getActiveBackendMode();
+    if (mode === 'supabase') {
+      return await SupabaseGameService.revealResults(roundId, gameId);
     }
+    if (mode === 'demo') {
+      return await MockGameService.revealResults(roundId, gameId);
+    }
+    return await ServerGameService.revealResults(roundId, gameId);
   }
 
   static async completeGame(gameId: string): Promise<void> {
-    try {
-      await this.getService().completeGame(gameId);
-    } catch {
-      await ServerGameService.completeGame(gameId);
+    const mode = getActiveBackendMode();
+    if (mode === 'supabase') {
+      return await SupabaseGameService.completeGame(gameId);
     }
+    if (mode === 'demo') {
+      return await MockGameService.completeGame(gameId);
+    }
+    return await ServerGameService.completeGame(gameId);
   }
 
   static async resetGame(gameId: string): Promise<void> {
-    try {
-      await this.getService().resetGame(gameId);
-    } catch {
-      await ServerGameService.resetGame(gameId);
+    const mode = getActiveBackendMode();
+    if (mode === 'supabase') {
+      return await SupabaseGameService.resetGame(gameId);
     }
+    if (mode === 'demo') {
+      return await MockGameService.resetGame(gameId);
+    }
+    return await ServerGameService.resetGame(gameId);
   }
 
   static async addSimulatedPlayer(gameId: string, name: string, avatar: string = '🤖'): Promise<Player> {
     const mode = getActiveBackendMode();
+    if (mode === 'supabase') {
+      // In supabase mode, simulated player is not standard unless mocked
+      return await ServerGameService.addSimulatedPlayer(gameId, name, avatar);
+    }
     if (mode === 'demo') {
       return await MockGameService.addSimulatedPlayer(gameId, name, avatar);
     }
-    try {
-      return await ServerGameService.addSimulatedPlayer(gameId, name, avatar);
-    } catch {
-      return await MockGameService.addSimulatedPlayer(gameId, name, avatar);
-    }
+    return await ServerGameService.addSimulatedPlayer(gameId, name, avatar);
   }
 
   static async autoSubmitBots(roundId: string, gameId: string): Promise<void> {
@@ -165,11 +179,7 @@ export class GameService {
     if (mode === 'demo') {
       return await MockGameService.autoSubmitBots(roundId, gameId);
     }
-    try {
-      await ServerGameService.autoSubmitBots(roundId, gameId);
-    } catch {
-      await MockGameService.autoSubmitBots(roundId, gameId);
-    }
+    return await ServerGameService.autoSubmitBots(roundId, gameId);
   }
 
   static subscribeToGame(
@@ -181,14 +191,13 @@ export class GameService {
       onDecisionsUpdate: (decisions: Decision[]) => void;
     }
   ): () => void {
-    const unsubPrimary = this.getService().subscribeToGame(gameId, callbacks);
-    const unsubServer = ServerGameService.subscribeToGame(gameId, callbacks);
-    const unsubMock = MockGameService.subscribeToGame(gameId, callbacks);
-
-    return () => {
-      unsubPrimary();
-      unsubServer();
-      unsubMock();
-    };
+    const mode = getActiveBackendMode();
+    if (mode === 'supabase') {
+      return SupabaseGameService.subscribeToGame(gameId, callbacks);
+    }
+    if (mode === 'demo') {
+      return MockGameService.subscribeToGame(gameId, callbacks);
+    }
+    return ServerGameService.subscribeToGame(gameId, callbacks);
   }
 }

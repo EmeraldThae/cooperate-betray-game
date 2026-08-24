@@ -1,5 +1,5 @@
 import { getSupabaseClient } from './client';
-import { Decision, DecisionType, Game, GameEvent, Player, Round } from '../types';
+import { Decision, DecisionType, Game, GameDetails, GameEvent, Player, Round } from '../types';
 import { generateGameCode } from '../utils/gameLogic';
 
 export class SupabaseGameService {
@@ -162,12 +162,7 @@ export class SupabaseGameService {
     return { game: game as Game, player: newPlayer as Player, userId };
   }
 
-  static async getGameDetails(gameId: string): Promise<{
-    game: Game;
-    players: Player[];
-    currentRound: Round | null;
-    decisions: Decision[];
-  }> {
+  static async getGameDetails(gameId: string): Promise<GameDetails> {
     const client = this.getClient();
     const { data: game, error: gameError } = await client
       .from('games')
@@ -185,26 +180,24 @@ export class SupabaseGameService {
       .eq('game_id', gameId)
       .order('score', { ascending: false });
 
-    let currentRound: Round | null = null;
+    const { data: allRoundsData } = await client
+      .from('rounds')
+      .select('*')
+      .eq('game_id', gameId)
+      .order('round_number', { ascending: true });
+
+    const rounds = (allRoundsData as Round[]) || [];
+    let currentRound: Round | null = rounds.find((r) => r.round_number === game.current_round) || null;
     let decisions: Decision[] = [];
 
-    if (game.current_round > 0) {
-      const { data: roundData } = await client
-        .from('rounds')
-        .select('*')
-        .eq('game_id', gameId)
-        .eq('round_number', game.current_round)
-        .maybeSingle();
+    const { data: allDecisionsData } = await client
+      .from('decisions')
+      .select('*')
+      .in('round_id', rounds.map((r) => r.id));
 
-      currentRound = (roundData as Round) || null;
-
-      if (currentRound) {
-        const { data: decData } = await client
-          .from('decisions')
-          .select('*')
-          .eq('round_id', currentRound.id);
-        decisions = (decData as Decision[]) || [];
-      }
+    const allDecisions = (allDecisionsData as Decision[]) || [];
+    if (currentRound) {
+      decisions = allDecisions.filter((d) => d.round_id === currentRound.id);
     }
 
     return {
@@ -212,6 +205,8 @@ export class SupabaseGameService {
       players: (players as Player[]) || [],
       currentRound,
       decisions,
+      rounds,
+      allDecisions,
     };
   }
 

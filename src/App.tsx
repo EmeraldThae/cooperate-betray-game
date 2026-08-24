@@ -33,6 +33,7 @@ export default function App() {
   const [game, setGame] = useState<Game | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
   const [currentRound, setCurrentRound] = useState<Round | null>(null);
+  const [allRounds, setAllRounds] = useState<Round[]>([]);
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [allDecisions, setAllDecisions] = useState<Decision[]>([]);
 
@@ -101,6 +102,12 @@ export default function App() {
       setPlayers(details.players);
       setCurrentRound(details.currentRound);
       setDecisions(details.decisions);
+      if (details.rounds) {
+        setAllRounds(details.rounds);
+      }
+      if (details.allDecisions) {
+        setAllDecisions(details.allDecisions);
+      }
 
       // Determine correct view based on game status & role
       const effectiveRole = roleHint || session.role;
@@ -142,6 +149,11 @@ export default function App() {
       },
       onRoundUpdate: (updatedRound) => {
         setCurrentRound(updatedRound);
+        setAllRounds((prev) => {
+          const map = new Map(prev.map((r) => [r.id, r]));
+          map.set(updatedRound.id, updatedRound);
+          return Array.from(map.values());
+        });
       },
       onDecisionsUpdate: (updatedDecisions) => {
         setDecisions(updatedDecisions);
@@ -313,6 +325,7 @@ export default function App() {
           <FinalSummary
             game={game}
             players={players}
+            allRounds={allRounds}
             allDecisions={allDecisions.length > 0 ? allDecisions : decisions}
             role={session.role || 'player'}
             currentPlayerId={session.playerId || undefined}

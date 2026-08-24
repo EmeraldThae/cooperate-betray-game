@@ -22,6 +22,43 @@ export type RoundStatus =
 
 export type DecisionType = 'cooperate' | 'betray' | 'no_decision';
 
+export interface PlayerPairing {
+  id: string;
+  round_number?: number;
+  player1_id: string;
+  player2_id: string;
+}
+
+export interface PairMatchResult {
+  pairing_id: string;
+  round_number: number;
+  player1: {
+    id: string;
+    name: string;
+    avatar?: string;
+    decision: DecisionType;
+    points: number;
+    score: number;
+  };
+  player2: {
+    id: string;
+    name: string;
+    avatar?: string;
+    decision: DecisionType;
+    points: number;
+    score: number;
+  };
+  outcome:
+    | 'both_cooperate'
+    | 'both_betray'
+    | 'p1_betray_p2_cooperate'
+    | 'p2_betray_p1_cooperate'
+    | 'timeout'
+    | 'mixed';
+  headline: string;
+  description: string;
+}
+
 export interface Game {
   id: string;
   game_code: string;
@@ -31,6 +68,7 @@ export interface Game {
   total_rounds: number;
   decision_time_seconds: number;
   room_name?: string;
+  current_pairings?: PlayerPairing[];
   created_at: string;
   updated_at: string;
 }
@@ -53,6 +91,7 @@ export interface Round {
   game_id: string;
   round_number: number;
   status: RoundStatus;
+  pairings?: PlayerPairing[];
   started_at: string;
   ended_at?: string | null;
   revealed_at?: string | null;
@@ -128,3 +167,26 @@ export interface SessionState {
   playerId: string | null;
   playerName: string | null;
 }
+
+export interface GameDetails {
+  game: Game;
+  players: Player[];
+  currentRound: Round | null;
+  decisions: Decision[];
+  rounds?: Round[];
+  allDecisions?: Decision[];
+}
+
+export interface GroupPairSummary {
+  player1: Player;
+  player2: Player;
+  totalMatches: number;
+  bothCooperateCount: number;
+  bothBetrayCount: number;
+  p1BetrayedCount: number;
+  p2BetrayedCount: number;
+  p1TotalPoints: number;
+  p2TotalPoints: number;
+  synergyLevel: 'High Trust' | 'Competitive' | 'Hostile' | 'Balanced';
+}
+

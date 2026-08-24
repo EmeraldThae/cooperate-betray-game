@@ -23,16 +23,18 @@ export const JoinGame: React.FC<JoinGameProps> = ({ onGameJoined, onBack, initia
       const parsed = validateGameCode(initialCode);
       if (parsed.valid) {
         setGameCode(parsed.formatted);
+      } else {
+        setGameCode(initialCode.toUpperCase().trim());
       }
     }
   }, [initialCode]);
 
   const handleCodeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let raw = e.target.value;
-    // If user pasted a URL containing ?code= or ?join=
-    if (raw.includes('code=') || raw.includes('join=')) {
+    // If user pasted a URL containing ?code= or ?join= or ?room=
+    if (raw.includes('code=') || raw.includes('join=') || raw.includes('room=')) {
       try {
-        const urlMatch = raw.match(/[?&](?:code|join)=([^&#]+)/i);
+        const urlMatch = raw.match(/[?&](?:code|join|room)=([^&#]+)/i);
         if (urlMatch && urlMatch[1]) {
           raw = decodeURIComponent(urlMatch[1]);
         }
@@ -40,17 +42,16 @@ export const JoinGame: React.FC<JoinGameProps> = ({ onGameJoined, onBack, initia
         // Continue with raw text
       }
     }
-    setGameCode(raw.toUpperCase());
+    setGameCode(raw.toUpperCase().trim());
   };
 
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    // Validate inputs
-    const codeVal = validateGameCode(gameCode);
-    if (!codeVal.valid) {
-      setError(codeVal.error || 'Please enter a valid Game Code (e.g. TB-7K4P9).');
+    const cleanInput = gameCode.trim();
+    if (!cleanInput) {
+      setError('Please enter a Game Code (e.g. TB-7K4P9).');
       return;
     }
 
@@ -65,7 +66,7 @@ export const JoinGame: React.FC<JoinGameProps> = ({ onGameJoined, onBack, initia
 
     try {
       const { game, player, userId } = await GameService.joinGame(
-        codeVal.formatted,
+        cleanInput,
         playerName.trim(),
         selectedAvatar
       );
