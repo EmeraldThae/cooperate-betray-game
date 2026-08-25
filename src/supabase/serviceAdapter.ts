@@ -51,7 +51,12 @@ export class GameService {
   }): Promise<{ game: Game; userId: string }> {
     const mode = getActiveBackendMode();
     if (mode === 'supabase') {
-      return await SupabaseGameService.createGame(options);
+      try {
+        return await SupabaseGameService.createGame(options);
+      } catch (err) {
+        console.warn('Supabase createGame failed, falling back to server/local:', err);
+        return await ServerGameService.createGame(options);
+      }
     }
     return await ServerGameService.createGame(options);
   }
@@ -67,7 +72,12 @@ export class GameService {
   }> {
     const mode = getActiveBackendMode();
     if (mode === 'supabase') {
-      return await SupabaseGameService.joinGame(gameCode, playerName, avatar);
+      try {
+        return await SupabaseGameService.joinGame(gameCode, playerName, avatar);
+      } catch (err) {
+        console.warn('Supabase joinGame failed, falling back to server/local:', err);
+        return await ServerGameService.joinGame(gameCode, playerName, avatar);
+      }
     }
     return await ServerGameService.joinGame(gameCode, playerName, avatar);
   }
@@ -75,7 +85,11 @@ export class GameService {
   static async getGameDetails(gameId: string): Promise<GameDetails> {
     const mode = getActiveBackendMode();
     if (mode === 'supabase') {
-      return await SupabaseGameService.getGameDetails(gameId);
+      try {
+        return await SupabaseGameService.getGameDetails(gameId);
+      } catch {
+        return await ServerGameService.getGameDetails(gameId);
+      }
     }
     return await ServerGameService.getGameDetails(gameId);
   }

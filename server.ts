@@ -246,13 +246,14 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  app.use(express.json());
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ extended: true }));
 
   // Enable CORS headers for API
   app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
     if (req.method === 'OPTIONS') {
       res.sendStatus(200);
       return;
@@ -290,10 +291,20 @@ async function startServer() {
   // Create Game
   app.post('/api/games', (req: Request, res: Response) => {
     try {
-      const { totalRounds = 5, decisionTimeSeconds = 30, roomName = 'Corporate Dilemma Lab' } = req.body || {};
+      const body = req.body || {};
+      const totalRounds = Number(body.totalRounds) || 5;
+      const decisionTimeSeconds = Number(body.decisionTimeSeconds) || 30;
+      const roomName = String(body.roomName || 'Corporate Workshop').trim();
+
       const gameId = 'game_' + Math.random().toString(36).substring(2, 10);
       const userId = 'host_' + Math.random().toString(36).substring(2, 9);
-      const code = generateGameCode();
+      
+      let code = generateGameCode();
+      // Ensure unique code
+      while (Array.from(games.values()).some((g) => g.game_code === code)) {
+        code = generateGameCode();
+      }
+
       const now = new Date().toISOString();
 
       const game: Game = {
@@ -302,9 +313,9 @@ async function startServer() {
         host_user_id: userId,
         status: 'lobby',
         current_round: 0,
-        total_rounds: Math.max(1, Math.min(50, Number(totalRounds) || 5)),
-        decision_time_seconds: Math.max(10, Math.min(300, Number(decisionTimeSeconds) || 30)),
-        room_name: String(roomName || 'Corporate Workshop').trim(),
+        total_rounds: Math.max(1, Math.min(50, totalRounds)),
+        decision_time_seconds: Math.max(10, Math.min(300, decisionTimeSeconds)),
+        room_name: roomName || 'Corporate Workshop',
         created_at: now,
         updated_at: now,
       };
@@ -314,7 +325,11 @@ async function startServer() {
       rounds.set(gameId, []);
       decisions.set(gameId, []);
 
-      saveStoreToDisk();
+      try {
+        saveStoreToDisk();
+      } catch (saveErr) {
+        console.warn('[Game Server] Non-fatal disk save warning:', saveErr);
+      }
 
       console.log(`[Game Server] Created new game: ${game.game_code} (ID: ${game.id})`);
       res.status(200).json({ game, userId });

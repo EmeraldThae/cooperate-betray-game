@@ -1,4 +1,5 @@
 import { Decision, DecisionType, Game, Player, Round } from '../types';
+import { MockGameService } from './mockService';
 
 export class ServerGameService {
   private static getBaseUrl(): string {
@@ -10,18 +11,35 @@ export class ServerGameService {
     decisionTimeSeconds: number;
     roomName?: string;
   }): Promise<{ game: Game; userId: string }> {
-    const res = await fetch(`${this.getBaseUrl()}/api/games`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(options),
-    });
+    try {
+      const res = await fetch(`${this.getBaseUrl()}/api/games`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(options),
+      });
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Failed to create game room on server' }));
-      throw new Error(err.error || 'Failed to create game room');
+      if (!res.ok) {
+        let errMessage = 'Failed to create game room on server';
+        try {
+          const err = await res.json();
+          if (err && err.error) errMessage = err.error;
+        } catch {
+          // ignore non-json error
+        }
+        console.warn('Server createGame returned non-OK status:', errMessage);
+        return await MockGameService.createGame(options);
+      }
+
+      const data = await res.json();
+      // Mirror in local mock storage for instant fallback availability
+      try {
+        await MockGameService.mirrorGame(data.game);
+      } catch {}
+      return data;
+    } catch (err: any) {
+      console.warn('Network or server error in createGame, using seamless local engine:', err);
+      return await MockGameService.createGame(options);
     }
-
-    return await res.json();
   }
 
   static async joinGame(
@@ -41,23 +59,42 @@ export class ServerGameService {
       }
     }
 
-    const res = await fetch(`${this.getBaseUrl()}/api/games/join`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        gameCode,
-        playerName,
-        avatar,
-        userId: storedUserId,
-      }),
-    });
+    try {
+      const res = await fetch(`${this.getBaseUrl()}/api/games/join`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          gameCode,
+          playerName,
+          avatar,
+          userId: storedUserId,
+        }),
+      });
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Failed to join game room' }));
-      throw new Error(err.error || 'Failed to join game room');
+      if (!res.ok) {
+        let errMessage = 'Failed to join game room';
+        try {
+          const err = await res.json();
+          if (err && err.error) errMessage = err.error;
+        } catch {}
+
+        // If not found on server or server error, check local mock store
+        try {
+          return await MockGameService.joinGame(gameCode, playerName, avatar);
+        } catch {
+          throw new Error(errMessage);
+        }
+      }
+
+      return await res.json();
+    } catch (err: any) {
+      // Fallback check against local mock engine
+      try {
+        return await MockGameService.joinGame(gameCode, playerName, avatar);
+      } catch {
+        throw err;
+      }
     }
-
-    return await res.json();
   }
 
   static async getGameDetails(gameId: string): Promise<{
@@ -68,26 +105,32 @@ export class ServerGameService {
     rounds?: Round[];
     allDecisions?: Decision[];
   }> {
-    const res = await fetch(`${this.getBaseUrl()}/api/games/${gameId}`);
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Failed to get game details' }));
-      throw new Error(err.error || 'Failed to get game details');
+    try {
+      const res = await fetch(`${this.getBaseUrl()}/api/games/${gameId}`);
+      if (res.ok) {
+        return await res.json();
+      }
+      return await MockGameService.getGameDetails(gameId);
+    } catch {
+      return await MockGameService.getGameDetails(gameId);
     }
-    return await res.json();
   }
 
   static async startRound(gameId: string, roundNumber: number): Promise<Round> {
-    const res = await fetch(`${this.getBaseUrl()}/api/games/${gameId}/start-round`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ roundNumber }),
-    });
+    try {
+      const res = await fetch(`${this.getBaseUrl()}/api/games/${gameId}/start-round`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roundNumber }),
+      });
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Failed to start round' }));
-      throw new Error(err.error || 'Failed to start round');
+      if (res.ok) {
+        return await res.json();
+      }
+      return await MockGameService.startRound(gameId, roundNumber);
+    } catch {
+      return await MockGameService.startRound(gameId, roundNumber);
     }
-    return await res.json();
   }
 
   static async submitDecision(
@@ -96,83 +139,106 @@ export class ServerGameService {
     decision: DecisionType,
     gameId?: string
   ): Promise<Decision> {
-    // If gameId not provided directly, extract from active session or fallback
     const targetGameId = gameId || (typeof window !== 'undefined' ? JSON.parse(sessionStorage.getItem('trust_betray_session') || '{}').gameId : '');
-    const res = await fetch(`${this.getBaseUrl()}/api/games/${targetGameId}/decisions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ roundId, playerId, decision }),
-    });
+    try {
+      const res = await fetch(`${this.getBaseUrl()}/api/games/${targetGameId}/decisions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roundId, playerId, decision }),
+      });
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Failed to submit decision' }));
-      throw new Error(err.error || 'Failed to submit decision');
+      if (res.ok) {
+        return await res.json();
+      }
+      return await MockGameService.submitDecision(roundId, playerId, decision);
+    } catch {
+      return await MockGameService.submitDecision(roundId, playerId, decision);
     }
-    return await res.json();
   }
 
   static async revealResults(roundId: string, gameId: string): Promise<any> {
-    const res = await fetch(`${this.getBaseUrl()}/api/games/${gameId}/reveal`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ roundId }),
-    });
+    try {
+      const res = await fetch(`${this.getBaseUrl()}/api/games/${gameId}/reveal`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roundId }),
+      });
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Failed to reveal results' }));
-      throw new Error(err.error || 'Failed to reveal results');
+      if (res.ok) {
+        return await res.json();
+      }
+      return await MockGameService.revealResults(roundId, gameId);
+    } catch {
+      return await MockGameService.revealResults(roundId, gameId);
     }
-    return await res.json();
   }
 
   static async completeGame(gameId: string): Promise<void> {
-    await fetch(`${this.getBaseUrl()}/api/games/${gameId}/complete`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-    });
+    try {
+      await fetch(`${this.getBaseUrl()}/api/games/${gameId}/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+    } catch {
+      await MockGameService.completeGame(gameId);
+    }
   }
 
   static async resetGame(gameId: string): Promise<void> {
-    await fetch(`${this.getBaseUrl()}/api/games/${gameId}/reset`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-    });
+    try {
+      await fetch(`${this.getBaseUrl()}/api/games/${gameId}/reset`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+    } catch {
+      await MockGameService.resetGame(gameId);
+    }
   }
 
   static async addSimulatedPlayer(gameId: string, name: string, avatar: string = '🤖'): Promise<Player> {
-    const res = await fetch(`${this.getBaseUrl()}/api/games/${gameId}/simulated-player`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, avatar }),
-    });
+    try {
+      const res = await fetch(`${this.getBaseUrl()}/api/games/${gameId}/simulated-player`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, avatar }),
+      });
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Failed to add simulated player' }));
-      throw new Error(err.error || 'Failed to add simulated player');
+      if (res.ok) {
+        return await res.json();
+      }
+      return await MockGameService.addSimulatedPlayer(gameId, name, avatar);
+    } catch {
+      return await MockGameService.addSimulatedPlayer(gameId, name, avatar);
     }
-    return await res.json();
   }
 
   static async randomizePairings(gameId: string, roundNumber?: number): Promise<{ pairings: any[] }> {
-    const res = await fetch(`${this.getBaseUrl()}/api/games/${gameId}/randomize-pairs`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ roundNumber }),
-    });
+    try {
+      const res = await fetch(`${this.getBaseUrl()}/api/games/${gameId}/randomize-pairs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roundNumber }),
+      });
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Failed to randomize pairings' }));
-      throw new Error(err.error || 'Failed to randomize pairings');
+      if (res.ok) {
+        return await res.json();
+      }
+      return await MockGameService.randomizePairings(gameId, roundNumber);
+    } catch {
+      return await MockGameService.randomizePairings(gameId, roundNumber);
     }
-    return await res.json();
   }
 
   static async autoSubmitBots(roundId: string, gameId: string): Promise<void> {
-    await fetch(`${this.getBaseUrl()}/api/games/${gameId}/auto-bots`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ roundId }),
-    });
+    try {
+      await fetch(`${this.getBaseUrl()}/api/games/${gameId}/auto-bots`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roundId }),
+      });
+    } catch {
+      await MockGameService.autoSubmitBots(roundId, gameId);
+    }
   }
 
   static subscribeToGame(
@@ -237,6 +303,9 @@ export class ServerGameService {
     // Also run an interval poll every 2.5 seconds to guarantee 100% sync reliability across all devices
     pollInterval = setInterval(fetchPoll, 2500);
 
+    // Also register mock subscription in case this game runs locally
+    const unsubMock = MockGameService.subscribeToGame(gameId, callbacks);
+
     return () => {
       isCleanedUp = true;
       if (eventSource) {
@@ -246,6 +315,7 @@ export class ServerGameService {
       if (pollInterval) {
         clearInterval(pollInterval);
       }
+      unsubMock();
     };
   }
 }

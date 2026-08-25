@@ -54,6 +54,16 @@ function notifySubscribers() {
 }
 
 export class MockGameService {
+  static async mirrorGame(game: Game) {
+    if (!game || !game.id) return;
+    const store = getStore();
+    store.games[game.id] = game;
+    if (!store.players[game.id]) store.players[game.id] = [];
+    if (!store.rounds[game.id]) store.rounds[game.id] = [];
+    if (!store.decisions[game.id]) store.decisions[game.id] = [];
+    saveStore(store);
+  }
+
   static async createGame(options: {
     totalRounds: number;
     decisionTimeSeconds: number;
