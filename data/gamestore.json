@@ -131,6 +131,17 @@
       "room_name": "Cross-Device Test Room",
       "created_at": "2026-08-25T08:38:57.655Z",
       "updated_at": "2026-08-25T08:38:57.655Z"
+    },
+    "game_84rjl": {
+      "id": "game_84rjl",
+      "game_code": "TB-84RJL",
+      "room_name": "Strategy Session",
+      "status": "lobby",
+      "total_rounds": 5,
+      "decision_time_seconds": 30,
+      "current_round": 0,
+      "created_at": "2026-08-25T08:45:00.000Z",
+      "updated_at": "2026-08-25T08:48:34.044Z"
     }
   },
   "players": {
@@ -307,6 +318,19 @@
         "joined_at": "2026-08-25T08:39:10.906Z",
         "last_seen_at": "2026-08-25T08:39:10.906Z"
       }
+    ],
+    "game_84rjl": [
+      {
+        "id": "player_wlu6nsmn",
+        "game_id": "game_84rjl",
+        "user_id": "user_yr7pcys",
+        "player_name": "TestMobileUser",
+        "score": 0,
+        "status": "waiting",
+        "avatar": "🛡️",
+        "joined_at": "2026-08-25T08:48:43.299Z",
+        "last_seen_at": "2026-08-25T08:48:43.299Z"
+      }
     ]
   },
   "rounds": {
@@ -330,7 +354,8 @@
     "game_qgp65s7y": [],
     "game_he4ky79d": [],
     "game_wv9haqkq": [],
-    "game_fobgat29": []
+    "game_fobgat29": [],
+    "game_84rjl": []
   },
   "decisions": {
     "game_khsvzxxz": [
@@ -360,6 +385,7 @@
     "game_qgp65s7y": [],
     "game_he4ky79d": [],
     "game_wv9haqkq": [],
-    "game_fobgat29": []
+    "game_fobgat29": [],
+    "game_84rjl": []
   }
 }

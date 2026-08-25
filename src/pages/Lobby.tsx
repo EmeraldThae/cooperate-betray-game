@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Game, Player } from '../types';
 import { PlayerList } from '../components/PlayerList';
 import {
@@ -53,6 +53,16 @@ export const Lobby: React.FC<LobbyProps> = ({
 
   const isHost = role === 'host';
   const currentPlayer = players.find((p) => p.id === currentPlayerId);
+
+  // Keep game continuously registered and active on central server
+  useEffect(() => {
+    if (!game) return;
+    GameService.syncGame(game, players).catch(() => {});
+    const interval = setInterval(() => {
+      GameService.syncGame(game, players).catch(() => {});
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [game, players]);
 
   const getJoinUrl = () => {
     if (typeof window === 'undefined') return '';

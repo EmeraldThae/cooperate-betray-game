@@ -82,6 +82,15 @@ export class GameService {
     return await ServerGameService.joinGame(gameCode, playerName, avatar);
   }
 
+  static async syncGame(
+    game: Game,
+    players?: Player[],
+    rounds?: Round[],
+    decisions?: Decision[]
+  ): Promise<boolean> {
+    return await ServerGameService.syncGame(game, players, rounds, decisions);
+  }
+
   static async checkGameCode(gameCode: string): Promise<{
     exists: boolean;
     gameCode?: string;

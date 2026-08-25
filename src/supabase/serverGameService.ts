@@ -37,8 +37,30 @@ export class ServerGameService {
       } catch {}
       return data;
     } catch (err: any) {
-      console.warn('Network or server error in createGame, using seamless local engine:', err);
-      return await MockGameService.createGame(options);
+      console.warn('Network or server error in createGame, using seamless local engine with auto-sync:', err);
+      const fallbackResult = await MockGameService.createGame(options);
+      // Asynchronously register this game on server as soon as connection is live
+      this.syncGame(fallbackResult.game).catch(() => {});
+      return fallbackResult;
+    }
+  }
+
+  static async syncGame(
+    game: Game,
+    players?: Player[],
+    rounds?: Round[],
+    decisions?: Decision[]
+  ): Promise<boolean> {
+    if (!game || !game.id) return false;
+    try {
+      const res = await fetch(`${this.getBaseUrl()}/api/games/sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ game, players, rounds, decisions }),
+      });
+      return res.ok;
+    } catch {
+      return false;
     }
   }
 

@@ -363,21 +363,24 @@ async function startServer() {
     }
   });
 
-  // Create Game
+  // Create or Register Game
   app.post('/api/games', (req: Request, res: Response) => {
     try {
       const body = req.body || {};
       const totalRounds = Number(body.totalRounds) || 5;
       const decisionTimeSeconds = Number(body.decisionTimeSeconds) || 30;
       const roomName = String(body.roomName || 'Corporate Workshop').trim();
+      const requestedCode = body.gameCode ? normalizeGameCode(String(body.gameCode)) : null;
 
-      const gameId = 'game_' + Math.random().toString(36).substring(2, 10);
-      const userId = 'host_' + Math.random().toString(36).substring(2, 9);
+      const gameId = body.id || 'game_' + Math.random().toString(36).substring(2, 10);
+      const userId = body.hostUserId || body.userId || 'host_' + Math.random().toString(36).substring(2, 9);
       
-      let code = generateGameCode();
-      // Ensure unique code
-      while (Array.from(games.values()).some((g) => g.game_code === code)) {
-        code = generateGameCode();
+      let code = requestedCode || generateGameCode();
+      if (!requestedCode) {
+        // Ensure unique code
+        while (Array.from(games.values()).some((g) => g.game_code === code)) {
+          code = generateGameCode();
+        }
       }
 
       const now = new Date().toISOString();
@@ -386,19 +389,19 @@ async function startServer() {
         id: gameId,
         game_code: code,
         host_user_id: userId,
-        status: 'lobby',
-        current_round: 0,
+        status: body.status || 'lobby',
+        current_round: Number(body.currentRound) || 0,
         total_rounds: Math.max(1, Math.min(50, totalRounds)),
         decision_time_seconds: Math.max(10, Math.min(300, decisionTimeSeconds)),
         room_name: roomName || 'Corporate Workshop',
-        created_at: now,
+        created_at: body.createdAt || now,
         updated_at: now,
       };
 
       games.set(gameId, game);
-      players.set(gameId, []);
-      rounds.set(gameId, []);
-      decisions.set(gameId, []);
+      if (!players.has(gameId)) players.set(gameId, body.players || []);
+      if (!rounds.has(gameId)) rounds.set(gameId, body.rounds || []);
+      if (!decisions.has(gameId)) decisions.set(gameId, body.decisions || []);
 
       try {
         saveStoreToDisk();
@@ -406,11 +409,58 @@ async function startServer() {
         console.warn('[Game Server] Non-fatal disk save warning:', saveErr);
       }
 
-      console.log(`[Game Server] Created new game: ${game.game_code} (ID: ${game.id})`);
+      console.log(`[Game Server] Registered game: ${game.game_code} (ID: ${game.id})`);
       res.status(200).json({ game, userId });
     } catch (err: any) {
       console.error('[Game Server] Error creating game:', err);
       res.status(500).json({ error: err?.message || 'Failed to create game room on server' });
+    }
+  });
+
+  // Client Sync / Keep-Alive Endpoint
+  app.post('/api/games/sync', (req: Request, res: Response) => {
+    try {
+      const { game, players: pList, rounds: rList, decisions: dList } = req.body || {};
+      if (!game || !game.id || !game.game_code) {
+        res.status(400).json({ error: 'Valid game object is required for sync.' });
+        return;
+      }
+
+      const normalizedCode = normalizeGameCode(game.game_code);
+      const existing = games.get(game.id);
+
+      if (!existing) {
+        // Register new game from client
+        const registeredGame: Game = {
+          ...game,
+          game_code: normalizedCode,
+          updated_at: new Date().toISOString(),
+        };
+        games.set(game.id, registeredGame);
+        if (pList && Array.isArray(pList)) players.set(game.id, pList);
+        else if (!players.has(game.id)) players.set(game.id, []);
+        if (rList && Array.isArray(rList)) rounds.set(game.id, rList);
+        else if (!rounds.has(game.id)) rounds.set(game.id, []);
+        if (dList && Array.isArray(dList)) decisions.set(game.id, dList);
+        else if (!decisions.has(game.id)) decisions.set(game.id, []);
+
+        saveStoreToDisk();
+        console.log(`[Game Server] Synced new game from client: ${registeredGame.game_code} (ID: ${registeredGame.id})`);
+        res.json({ success: true, registered: true, game: registeredGame });
+      } else {
+        // Update existing game
+        existing.status = game.status || existing.status;
+        existing.current_round = game.current_round ?? existing.current_round;
+        existing.updated_at = new Date().toISOString();
+        if (pList && Array.isArray(pList)) {
+          players.set(game.id, pList);
+        }
+        saveStoreToDisk();
+        res.json({ success: true, registered: false, game: existing });
+      }
+    } catch (err: any) {
+      console.error('[Game Server] Sync error:', err);
+      res.status(500).json({ error: 'Sync failed' });
     }
   });
 
