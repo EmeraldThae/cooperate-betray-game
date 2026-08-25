@@ -83,6 +83,30 @@
       "room_name": "Strategy Summit",
       "created_at": "2026-08-25T06:59:55.229Z",
       "updated_at": "2026-08-25T06:59:55.229Z"
+    },
+    "game_qgp65s7y": {
+      "id": "game_qgp65s7y",
+      "game_code": "TB-QC2DV",
+      "host_user_id": "host_ozbvc4u",
+      "status": "lobby",
+      "current_round": 0,
+      "total_rounds": 3,
+      "decision_time_seconds": 30,
+      "room_name": "Leadership Workshop",
+      "created_at": "2026-08-25T07:38:51.039Z",
+      "updated_at": "2026-08-25T07:38:51.039Z"
+    },
+    "game_he4ky79d": {
+      "id": "game_he4ky79d",
+      "game_code": "TB-CQCBE",
+      "host_user_id": "host_e7nmyoe",
+      "status": "lobby",
+      "current_round": 0,
+      "total_rounds": 5,
+      "decision_time_seconds": 30,
+      "room_name": "Executive Lab",
+      "created_at": "2026-08-25T07:43:38.689Z",
+      "updated_at": "2026-08-25T07:43:38.689Z"
     }
   },
   "players": {
@@ -185,6 +209,43 @@
         "joined_at": "2026-08-25T06:59:57.422Z",
         "last_seen_at": "2026-08-25T06:59:57.422Z"
       }
+    ],
+    "game_qgp65s7y": [
+      {
+        "id": "player_2r0u28ic",
+        "game_id": "game_qgp65s7y",
+        "user_id": "user_xbfmhd5",
+        "player_name": "PPP",
+        "score": 0,
+        "status": "waiting",
+        "avatar": "🛡️",
+        "joined_at": "2026-08-25T07:39:29.081Z",
+        "last_seen_at": "2026-08-25T07:39:29.081Z"
+      }
+    ],
+    "game_he4ky79d": [
+      {
+        "id": "player_qv3lw0oz",
+        "game_id": "game_he4ky79d",
+        "user_id": "user_lyibgbj",
+        "player_name": "Player1",
+        "score": 0,
+        "status": "waiting",
+        "avatar": "🛡️",
+        "joined_at": "2026-08-25T07:43:41.132Z",
+        "last_seen_at": "2026-08-25T07:43:41.132Z"
+      },
+      {
+        "id": "player_ns8owi5s",
+        "game_id": "game_he4ky79d",
+        "user_id": "user_lu0uaom",
+        "player_name": "Player2",
+        "score": 0,
+        "status": "waiting",
+        "avatar": "🛡️",
+        "joined_at": "2026-08-25T07:43:44.400Z",
+        "last_seen_at": "2026-08-25T07:43:44.400Z"
+      }
     ]
   },
   "rounds": {
@@ -204,7 +265,9 @@
     "game_i8tb0z5m": [],
     "game_64t51rbt": [],
     "game_wmo8ihvf": [],
-    "game_nj6ny1jg": []
+    "game_nj6ny1jg": [],
+    "game_qgp65s7y": [],
+    "game_he4ky79d": []
   },
   "decisions": {
     "game_khsvzxxz": [
@@ -230,6 +293,8 @@
     "game_i8tb0z5m": [],
     "game_64t51rbt": [],
     "game_wmo8ihvf": [],
-    "game_nj6ny1jg": []
+    "game_nj6ny1jg": [],
+    "game_qgp65s7y": [],
+    "game_he4ky79d": []
   }
 }

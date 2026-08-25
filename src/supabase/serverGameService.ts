@@ -72,7 +72,7 @@ export class ServerGameService {
       });
 
       if (!res.ok) {
-        let errMessage = `Game code "${gameCode.toUpperCase()}" not found. Please verify the code or select an active room below.`;
+        let errMessage = `Game code "${gameCode.toUpperCase()}" not found. Please verify the room code.`;
         try {
           const err = await res.json();
           if (err && err.error) errMessage = err.error;
