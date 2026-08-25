@@ -148,8 +148,11 @@ function generateGameCode(): string {
   return `TB-${randomPart}`;
 }
 
-function normalizeGameCode(code: string): string {
-  let cleaned = (code || '').trim();
+function cleanCodeString(input: string): string {
+  if (!input) return '';
+  let cleaned = String(input).trim();
+  // Remove zero-width spaces, non-breaking spaces, and unicode invisible characters
+  cleaned = cleaned.replace(/[\u200B-\u200D\uFEFF\u00A0\u2013\u2014]/g, '-');
   // If user pasted a full URL or query string
   if (cleaned.includes('code=') || cleaned.includes('join=') || cleaned.includes('room=')) {
     const match = cleaned.match(/[?&](?:code|join|room)=([^&#\s]+)/i);
@@ -157,44 +160,62 @@ function normalizeGameCode(code: string): string {
       cleaned = decodeURIComponent(match[1]);
     }
   }
-  cleaned = cleaned.toUpperCase().replace(/[\s\-_#]+/g, '').trim();
-  if (cleaned.startsWith('TB')) {
-    cleaned = cleaned.substring(2);
+  // Strip trailing slashes, quotes, or hashes
+  cleaned = cleaned.replace(/^[#'"]+|[/'"]+$/g, '').trim();
+  return cleaned;
+}
+
+function normalizeGameCode(code: string): string {
+  const cleaned = cleanCodeString(code);
+  const alphanumericOnly = cleaned.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (alphanumericOnly.startsWith('TB') && alphanumericOnly.length > 2) {
+    return `TB-${alphanumericOnly.substring(2)}`;
   }
-  return `TB-${cleaned}`;
+  return `TB-${alphanumericOnly}`;
 }
 
 function findGameByCode(inputCode: string): Game | undefined {
   if (!inputCode) return undefined;
-  const rawInput = inputCode.trim();
+  const rawInput = cleanCodeString(inputCode);
   const targetNorm = normalizeGameCode(rawInput);
-  const plainTarget = targetNorm.replace('TB-', '').toUpperCase();
+  const rawAlpha = rawInput.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const rawSuffix = rawAlpha.startsWith('TB') && rawAlpha.length > 2 ? rawAlpha.substring(2) : rawAlpha;
 
-  // Search in memory
+  // Search in memory first
   for (const g of games.values()) {
     const gNorm = normalizeGameCode(g.game_code);
-    const gPlain = gNorm.replace('TB-', '').toUpperCase();
+    const gAlpha = g.game_code.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const gSuffix = gAlpha.startsWith('TB') && gAlpha.length > 2 ? gAlpha.substring(2) : gAlpha;
+    const gId = g.id.toLowerCase();
+    const inputLower = rawInput.toLowerCase();
+
     if (
-      g.id.toLowerCase() === rawInput.toLowerCase() ||
+      gId === inputLower ||
       g.game_code.toUpperCase() === rawInput.toUpperCase() ||
       gNorm === targetNorm ||
-      gPlain === plainTarget
+      gAlpha === rawAlpha ||
+      (rawSuffix.length >= 3 && gSuffix === rawSuffix)
     ) {
       return g;
     }
   }
 
-  // If not found in memory, reload from disk in case of fresh process
+  // If not found in memory, reload from disk in case of fresh process or parallel write
   try {
     const diskStore = ensureDataFile();
     for (const [id, g] of Object.entries(diskStore.games)) {
       const gNorm = normalizeGameCode(g.game_code);
-      const gPlain = gNorm.replace('TB-', '').toUpperCase();
+      const gAlpha = g.game_code.toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const gSuffix = gAlpha.startsWith('TB') && gAlpha.length > 2 ? gAlpha.substring(2) : gAlpha;
+      const gId = g.id.toLowerCase();
+      const inputLower = rawInput.toLowerCase();
+
       if (
-        g.id.toLowerCase() === rawInput.toLowerCase() ||
+        gId === inputLower ||
         g.game_code.toUpperCase() === rawInput.toUpperCase() ||
         gNorm === targetNorm ||
-        gPlain === plainTarget
+        gAlpha === rawAlpha ||
+        (rawSuffix.length >= 3 && gSuffix === rawSuffix)
       ) {
         games.set(id, g);
         if (diskStore.players[id]) players.set(id, diskStore.players[id]);
@@ -404,8 +425,17 @@ async function startServer() {
         players.set(targetGame.id, currentPlayers);
       }
 
-      saveStoreToDisk();
-      broadcastGameUpdate(targetGame.id);
+      try {
+        saveStoreToDisk();
+      } catch (saveErr) {
+        console.warn('[Game Server] Non-fatal disk save warning:', saveErr);
+      }
+
+      try {
+        broadcastGameUpdate(targetGame.id);
+      } catch (sseErr) {
+        console.warn('[Game Server] Non-fatal broadcast warning:', sseErr);
+      }
 
       console.log(`[Game Server] Player "${trimmedName}" joined game ${targetGame.game_code}`);
       res.status(200).json({ game: targetGame, player: playerObj, userId });

@@ -103,17 +103,28 @@ export class MockGameService {
     userId: string;
   }> {
     const store = getStore();
-    const rawClean = gameCode.toUpperCase().replace(/[\s\-_]+/g, '').trim();
-    const targetSuffix = rawClean.startsWith('TB') ? rawClean.substring(2) : rawClean;
+    const rawClean = (gameCode || '')
+      .replace(/[\u200B-\u200D\uFEFF\u00A0\u2013\u2014]/g, '-')
+      .replace(/^[#'"]+|[/'"]+$/g, '')
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, '')
+      .trim();
+    const targetSuffix = rawClean.startsWith('TB') && rawClean.length > 2 ? rawClean.substring(2) : rawClean;
     const formattedCode = `TB-${targetSuffix}`;
+
     const game = Object.values(store.games).find((g) => {
-      const gClean = g.game_code.toUpperCase().replace(/[\s\-_]+/g, '');
-      const gSuffix = gClean.startsWith('TB') ? gClean.substring(2) : gClean;
-      return gSuffix === targetSuffix || g.game_code === formattedCode;
+      const gClean = g.game_code.toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const gSuffix = gClean.startsWith('TB') && gClean.length > 2 ? gClean.substring(2) : gClean;
+      return (
+        g.id.toLowerCase() === (gameCode || '').toLowerCase().trim() ||
+        g.game_code.toUpperCase() === (gameCode || '').toUpperCase().trim() ||
+        gSuffix === targetSuffix ||
+        g.game_code === formattedCode
+      );
     });
 
     if (!game) {
-      throw new Error(`Game code "${formattedCode}" not found. Please verify the code or check your connection.`);
+      throw new Error(`Game code "${formattedCode}" not found. Please verify the room code.`);
     }
 
     if (game.status === 'completed') {
@@ -124,16 +135,22 @@ export class MockGameService {
     let userId = localStorage.getItem('tb_user_id') || 'mock_user_' + Math.random().toString(36).substring(2, 9);
     localStorage.setItem('tb_user_id', userId);
 
+    let trimmedName = (playerName || 'Player').trim();
+    const existingSelf = currentPlayers.find((p) => p.user_id === userId);
     const nameConflict = currentPlayers.find(
-      (p) => p.player_name.toLowerCase() === playerName.toLowerCase().trim() && p.user_id !== userId
+      (p) => p.player_name.toLowerCase() === trimmedName.toLowerCase() && p.user_id !== userId
     );
-    if (nameConflict) {
-      throw new Error(`Player name "${playerName}" is already in use.`);
+
+    if (nameConflict && !existingSelf) {
+      let suffix = 2;
+      while (currentPlayers.some((p) => p.player_name.toLowerCase() === `${trimmedName} (${suffix})`.toLowerCase())) {
+        suffix++;
+      }
+      trimmedName = `${trimmedName} (${suffix})`;
     }
 
-    const existingSelf = currentPlayers.find((p) => p.user_id === userId);
     if (existingSelf) {
-      existingSelf.player_name = playerName.trim();
+      existingSelf.player_name = trimmedName;
       existingSelf.avatar = avatar;
       existingSelf.last_seen_at = new Date().toISOString();
       saveStore(store);
@@ -144,9 +161,9 @@ export class MockGameService {
       id: 'player_' + Math.random().toString(36).substring(2, 10),
       game_id: game.id,
       user_id: userId,
-      player_name: playerName.trim(),
+      player_name: trimmedName,
       score: 0,
-      status: 'waiting',
+      status: game.status === 'round_active' ? 'playing' : 'waiting',
       avatar,
       joined_at: new Date().toISOString(),
       last_seen_at: new Date().toISOString(),

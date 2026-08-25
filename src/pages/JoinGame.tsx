@@ -103,8 +103,7 @@ export const JoinGame: React.FC<JoinGameProps> = ({ onGameJoined, onBack, initia
           <div className="p-3.5 rounded-xl bg-rose-950/70 border border-rose-500/50 text-rose-200 text-xs flex items-start gap-2.5">
             <AlertCircle className="w-4 h-4 flex-shrink-0 text-rose-400 mt-0.5" />
             <div className="space-y-0.5">
-              <span className="font-bold block">Could not connect to room:</span>
-              <span>{error}</span>
+              <span className="font-semibold block">{error}</span>
             </div>
           </div>
         )}

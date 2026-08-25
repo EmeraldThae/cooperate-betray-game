@@ -86,13 +86,17 @@ export class ServerGameService {
         }
       }
 
-      return await res.json();
+      const data = await res.json();
+      try {
+        await MockGameService.mirrorGame(data.game);
+      } catch {}
+      return data;
     } catch (err: any) {
       // Fallback check against local mock engine
       try {
         return await MockGameService.joinGame(gameCode, playerName, avatar);
-      } catch {
-        throw err;
+      } catch (mockErr: any) {
+        throw new Error(err?.message || mockErr?.message || 'Failed to join game room');
       }
     }
   }

@@ -19,12 +19,12 @@ export function generateGameCode(): string {
 }
 
 export function validatePlayerName(name: string): { valid: boolean; error?: string } {
-  const trimmed = name.trim();
+  const trimmed = (name || '').trim();
   if (!trimmed) {
     return { valid: false, error: 'Please enter a player name.' };
   }
-  if (trimmed.length < 2) {
-    return { valid: false, error: 'Player name must be at least 2 characters.' };
+  if (trimmed.length < 1) {
+    return { valid: false, error: 'Player name must be at least 1 character.' };
   }
   if (trimmed.length > 24) {
     return { valid: false, error: 'Player name cannot exceed 24 characters.' };
@@ -40,11 +40,16 @@ export function validateGameCode(code: string): { valid: boolean; formatted: str
   if (!code || typeof code !== 'string') {
     return { valid: false, formatted: '', error: 'Please enter a Game Code.' };
   }
-  let raw = code.toUpperCase().replace(/[\s\-_]+/g, '').trim();
-  if (raw.startsWith('TB')) {
+  let raw = code
+    .replace(/[\u200B-\u200D\uFEFF\u00A0\u2013\u2014]/g, '-')
+    .replace(/^[#'"]+|[/'"]+$/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+    .trim();
+  if (raw.startsWith('TB') && raw.length > 2) {
     raw = raw.substring(2);
   }
-  if (raw.length < 3) {
+  if (raw.length < 2) {
     return { valid: false, formatted: `TB-${raw}`, error: 'Please enter a valid Game Code (e.g. TB-7K4P9).' };
   }
   const formatted = `TB-${raw}`;
