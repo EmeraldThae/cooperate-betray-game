@@ -82,6 +82,22 @@ export class GameService {
     return await ServerGameService.joinGame(gameCode, playerName, avatar);
   }
 
+  static async getActiveGames(): Promise<Array<{
+    id: string;
+    game_code: string;
+    room_name: string;
+    status: string;
+    player_count: number;
+    total_rounds: number;
+    created_at: string;
+  }>> {
+    try {
+      return await ServerGameService.getActiveGames();
+    } catch {
+      return await MockGameService.getActiveGames();
+    }
+  }
+
   static async getGameDetails(gameId: string): Promise<GameDetails> {
     const mode = getActiveBackendMode();
     if (mode === 'supabase') {

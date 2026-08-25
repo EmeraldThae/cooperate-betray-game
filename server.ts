@@ -309,6 +309,30 @@ async function startServer() {
     });
   });
 
+  // Get active games list for quick room discovery & joining
+  app.get('/api/games/active', (req: Request, res: Response) => {
+    try {
+      // Reload in-memory if needed
+      ensureDataFile();
+      const activeList = Array.from(games.values())
+        .filter((g) => g.status !== 'completed')
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        .slice(0, 8)
+        .map((g) => ({
+          id: g.id,
+          game_code: g.game_code,
+          room_name: g.room_name,
+          status: g.status,
+          total_rounds: g.total_rounds,
+          player_count: (players.get(g.id) || []).length,
+          created_at: g.created_at,
+        }));
+      res.json({ games: activeList });
+    } catch (e: any) {
+      res.json({ games: [] });
+    }
+  });
+
   // Create Game
   app.post('/api/games', (req: Request, res: Response) => {
     try {

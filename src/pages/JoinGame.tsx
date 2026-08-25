@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LogIn, ArrowLeft, RefreshCw, AlertCircle, Sparkles, User, Hash, Smartphone } from 'lucide-react';
+import { LogIn, ArrowLeft, RefreshCw, AlertCircle, Sparkles, User, Hash, Smartphone, Radio, Users } from 'lucide-react';
 import { GameService } from '../supabase/serviceAdapter';
 import { AVATAR_OPTIONS, validateGameCode, validatePlayerName } from '../utils/gameLogic';
 import { Game, Player } from '../types';
@@ -11,12 +11,24 @@ interface JoinGameProps {
   initialCode?: string;
 }
 
+interface ActiveRoomItem {
+  id: string;
+  game_code: string;
+  room_name: string;
+  status: string;
+  player_count: number;
+  total_rounds: number;
+  created_at: string;
+}
+
 export const JoinGame: React.FC<JoinGameProps> = ({ onGameJoined, onBack, initialCode = '' }) => {
   const [gameCode, setGameCode] = useState(initialCode);
   const [playerName, setPlayerName] = useState('');
   const [selectedAvatar, setSelectedAvatar] = useState('🛡️');
   const [isJoining, setIsJoining] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeRooms, setActiveRooms] = useState<ActiveRoomItem[]>([]);
+  const [isLoadingRooms, setIsLoadingRooms] = useState(false);
 
   useEffect(() => {
     if (initialCode) {
@@ -28,6 +40,29 @@ export const JoinGame: React.FC<JoinGameProps> = ({ onGameJoined, onBack, initia
       }
     }
   }, [initialCode]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchRooms = async () => {
+      setIsLoadingRooms(true);
+      try {
+        const rooms = await GameService.getActiveGames();
+        if (isMounted && Array.isArray(rooms)) {
+          setActiveRooms(rooms);
+        }
+      } catch {
+        // Non-fatal
+      } finally {
+        if (isMounted) setIsLoadingRooms(false);
+      }
+    };
+    fetchRooms();
+    const interval = setInterval(fetchRooms, 8000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
 
   const handleCodeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let raw = e.target.value;
@@ -43,6 +78,12 @@ export const JoinGame: React.FC<JoinGameProps> = ({ onGameJoined, onBack, initia
       }
     }
     setGameCode(raw.toUpperCase().trim());
+  };
+
+  const handleSelectRoom = (code: string) => {
+    playSound('click');
+    setGameCode(code);
+    setError(null);
   };
 
   const handleJoin = async (e: React.FormEvent) => {
@@ -85,7 +126,7 @@ export const JoinGame: React.FC<JoinGameProps> = ({ onGameJoined, onBack, initia
         <div className="flex items-center justify-between border-b border-slate-800 pb-4">
           <button
             onClick={onBack}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-white transition"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-white transition cursor-pointer"
           >
             <ArrowLeft className="w-4 h-4" /> Back
           </button>
@@ -96,7 +137,7 @@ export const JoinGame: React.FC<JoinGameProps> = ({ onGameJoined, onBack, initia
 
         <div>
           <h2 className="text-2xl md:text-3xl font-black text-white">Join Training Room</h2>
-          <p className="text-sm text-slate-400 mt-1">Enter your room code to participate from your phone or laptop.</p>
+          <p className="text-sm text-slate-400 mt-1">Enter your room code or select an active room below.</p>
         </div>
 
         {error && (
@@ -104,6 +145,40 @@ export const JoinGame: React.FC<JoinGameProps> = ({ onGameJoined, onBack, initia
             <AlertCircle className="w-4 h-4 flex-shrink-0 text-rose-400 mt-0.5" />
             <div className="space-y-0.5">
               <span className="font-semibold block">{error}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Active Open Rooms Quick Discovery */}
+        {activeRooms.length > 0 && (
+          <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-indigo-900/40 space-y-2">
+            <div className="flex items-center justify-between text-[11px] font-semibold text-slate-400">
+              <span className="flex items-center gap-1.5 text-indigo-300 uppercase tracking-wider">
+                <Radio className="w-3 h-3 text-emerald-400 animate-pulse" />
+                Active Sessions Available
+              </span>
+              <span className="text-[10px] text-slate-500">Tap to auto-fill</span>
+            </div>
+            <div className="flex flex-wrap gap-2 pt-1">
+              {activeRooms.map((room) => (
+                <button
+                  key={room.id}
+                  type="button"
+                  onClick={() => handleSelectRoom(room.game_code)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold flex items-center gap-2 border transition cursor-pointer ${
+                    gameCode.toUpperCase() === room.game_code.toUpperCase()
+                      ? 'bg-indigo-600/40 border-indigo-400 text-indigo-200 shadow-md shadow-indigo-600/20'
+                      : 'bg-slate-900 border-slate-700/80 text-slate-300 hover:border-indigo-500/60 hover:text-white'
+                  }`}
+                >
+                  <span className="text-amber-400">{room.game_code}</span>
+                  <span className="text-slate-400 text-[10px] font-sans font-medium">({room.room_name || 'Room'})</span>
+                  <span className="text-[10px] text-slate-400 flex items-center gap-0.5">
+                    <Users className="w-2.5 h-2.5 text-emerald-400" />
+                    {room.player_count}
+                  </span>
+                </button>
+              ))}
             </div>
           </div>
         )}
@@ -163,7 +238,7 @@ export const JoinGame: React.FC<JoinGameProps> = ({ onGameJoined, onBack, initia
                   type="button"
                   key={av}
                   onClick={() => setSelectedAvatar(av)}
-                  className={`h-11 rounded-xl text-xl flex items-center justify-center transition border ${
+                  className={`h-11 rounded-xl text-xl flex items-center justify-center transition border cursor-pointer ${
                     selectedAvatar === av
                       ? 'bg-indigo-600/30 border-indigo-400 scale-110 shadow-md shadow-indigo-600/20'
                       : 'bg-slate-950 border-slate-800 hover:border-slate-700'

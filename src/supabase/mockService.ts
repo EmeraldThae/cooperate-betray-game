@@ -464,6 +464,31 @@ export class MockGameService {
     saveStore(store);
   }
 
+  static async getActiveGames(): Promise<Array<{
+    id: string;
+    game_code: string;
+    room_name: string;
+    status: string;
+    player_count: number;
+    total_rounds: number;
+    created_at: string;
+  }>> {
+    const store = getStore();
+    return Object.values(store.games)
+      .filter((g) => g.status !== 'completed')
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, 8)
+      .map((g) => ({
+        id: g.id,
+        game_code: g.game_code,
+        room_name: g.room_name,
+        status: g.status,
+        player_count: (store.players[g.id] || []).length,
+        total_rounds: g.total_rounds,
+        created_at: g.created_at,
+      }));
+  }
+
   static subscribeToGame(
     gameId: string,
     callbacks: {

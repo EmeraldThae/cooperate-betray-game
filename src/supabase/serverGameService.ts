@@ -72,7 +72,7 @@ export class ServerGameService {
       });
 
       if (!res.ok) {
-        let errMessage = 'Failed to join game room';
+        let errMessage = `Game code "${gameCode.toUpperCase()}" not found. Please verify the code or select an active room below.`;
         try {
           const err = await res.json();
           if (err && err.error) errMessage = err.error;
@@ -96,8 +96,39 @@ export class ServerGameService {
       try {
         return await MockGameService.joinGame(gameCode, playerName, avatar);
       } catch (mockErr: any) {
-        throw new Error(err?.message || mockErr?.message || 'Failed to join game room');
+        const errorMsg =
+          err?.message && !err.message.includes('Failed to fetch') && !err.message.includes('NetworkError')
+            ? err.message
+            : mockErr?.message || `Game code "${gameCode.toUpperCase()}" not found. Please check your room code.`;
+        throw new Error(errorMsg);
       }
+    }
+  }
+
+  static async getActiveGames(): Promise<Array<{
+    id: string;
+    game_code: string;
+    room_name: string;
+    status: string;
+    player_count: number;
+    total_rounds: number;
+    created_at: string;
+  }>> {
+    try {
+      const res = await fetch(`${this.getBaseUrl()}/api/games/active`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && Array.isArray(data.games)) {
+          return data.games;
+        }
+      }
+    } catch {}
+
+    // Fallback to local mock store active games
+    try {
+      return await MockGameService.getActiveGames();
+    } catch {
+      return [];
     }
   }
 
