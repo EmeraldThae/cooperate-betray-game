@@ -160,6 +160,11 @@ function cleanCodeString(input: string): string {
       cleaned = decodeURIComponent(match[1]);
     }
   }
+  // Strip path segments if pasted like http://.../join/TB-XYZ
+  if (cleaned.includes('/')) {
+    const parts = cleaned.split('/');
+    cleaned = parts[parts.length - 1] || cleaned;
+  }
   // Strip trailing slashes, quotes, or hashes
   cleaned = cleaned.replace(/^[#'"]+|[/'"]+$/g, '').trim();
   return cleaned;
@@ -167,11 +172,23 @@ function cleanCodeString(input: string): string {
 
 function normalizeGameCode(code: string): string {
   const cleaned = cleanCodeString(code);
-  const alphanumericOnly = cleaned.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  let alphanumericOnly = cleaned.toUpperCase().replace(/[^A-Z0-9]/g, '');
   if (alphanumericOnly.startsWith('TB') && alphanumericOnly.length > 2) {
-    return `TB-${alphanumericOnly.substring(2)}`;
+    alphanumericOnly = alphanumericOnly.substring(2);
   }
   return `TB-${alphanumericOnly}`;
+}
+
+// Convert visually ambiguous characters to standardized canonical forms
+function standardizeLookalikes(str: string): string {
+  return str
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+    .replace(/0/g, 'O')
+    .replace(/[1I]/g, 'L')
+    .replace(/5/g, 'S')
+    .replace(/8/g, 'B')
+    .replace(/2/g, 'Z');
 }
 
 function findGameByCode(inputCode: string): Game | undefined {
@@ -180,8 +197,24 @@ function findGameByCode(inputCode: string): Game | undefined {
   const targetNorm = normalizeGameCode(rawInput);
   const rawAlpha = rawInput.toUpperCase().replace(/[^A-Z0-9]/g, '');
   const rawSuffix = rawAlpha.startsWith('TB') && rawAlpha.length > 2 ? rawAlpha.substring(2) : rawAlpha;
+  const targetStandard = standardizeLookalikes(rawSuffix);
 
-  // Search in memory first
+  // Always refresh in-memory with any disk data
+  try {
+    const diskStore = ensureDataFile();
+    for (const [id, g] of Object.entries(diskStore.games)) {
+      if (!games.has(id)) {
+        games.set(id, g);
+        if (diskStore.players[id]) players.set(id, diskStore.players[id]);
+        if (diskStore.rounds[id]) rounds.set(id, diskStore.rounds[id]);
+        if (diskStore.decisions[id]) decisions.set(id, diskStore.decisions[id]);
+      }
+    }
+  } catch (err) {
+    // Non-fatal
+  }
+
+  // 1. Pass 1: Exact matches (game_code, formatted, ID, suffix)
   for (const g of games.values()) {
     const gNorm = normalizeGameCode(g.game_code);
     const gAlpha = g.game_code.toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -200,32 +233,27 @@ function findGameByCode(inputCode: string): Game | undefined {
     }
   }
 
-  // If not found in memory, reload from disk in case of fresh process or parallel write
-  try {
-    const diskStore = ensureDataFile();
-    for (const [id, g] of Object.entries(diskStore.games)) {
-      const gNorm = normalizeGameCode(g.game_code);
-      const gAlpha = g.game_code.toUpperCase().replace(/[^A-Z0-9]/g, '');
-      const gSuffix = gAlpha.startsWith('TB') && gAlpha.length > 2 ? gAlpha.substring(2) : gAlpha;
-      const gId = g.id.toLowerCase();
-      const inputLower = rawInput.toLowerCase();
+  // 2. Pass 2: Lookalike character matching for active games (e.g. 0 vs O, 1 vs L, 5 vs S)
+  for (const g of games.values()) {
+    if (g.status === 'completed') continue;
+    const gAlpha = g.game_code.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const gSuffix = gAlpha.startsWith('TB') && gAlpha.length > 2 ? gAlpha.substring(2) : gAlpha;
+    const gStandard = standardizeLookalikes(gSuffix);
 
-      if (
-        gId === inputLower ||
-        g.game_code.toUpperCase() === rawInput.toUpperCase() ||
-        gNorm === targetNorm ||
-        gAlpha === rawAlpha ||
-        (rawSuffix.length >= 3 && gSuffix === rawSuffix)
-      ) {
-        games.set(id, g);
-        if (diskStore.players[id]) players.set(id, diskStore.players[id]);
-        if (diskStore.rounds[id]) rounds.set(id, diskStore.rounds[id]);
-        if (diskStore.decisions[id]) decisions.set(id, diskStore.decisions[id]);
-        return g;
-      }
+    if (rawSuffix.length >= 3 && gStandard === targetStandard) {
+      return g;
     }
-  } catch (err) {
-    console.error('Error checking disk store in findGameByCode:', err);
+  }
+
+  // 3. Pass 3: If only 1 active lobby game exists on server and rawSuffix is close (length >= 3)
+  const activeLobbyGames = Array.from(games.values()).filter((g) => g.status === 'lobby');
+  if (activeLobbyGames.length === 1 && rawSuffix.length >= 4) {
+    const single = activeLobbyGames[0];
+    const sAlpha = single.game_code.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const sSuffix = sAlpha.startsWith('TB') && sAlpha.length > 2 ? sAlpha.substring(2) : sAlpha;
+    if (sSuffix.startsWith(rawSuffix.substring(0, 3)) || rawSuffix.startsWith(sSuffix.substring(0, 3))) {
+      return single;
+    }
   }
 
   return undefined;

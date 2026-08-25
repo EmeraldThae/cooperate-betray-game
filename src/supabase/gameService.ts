@@ -96,17 +96,30 @@ export class SupabaseGameService {
   }> {
     const client = this.getClient();
     const userId = await this.ensureAuthUser();
-    const formattedCode = gameCode.toUpperCase().trim();
+    let cleaned = (gameCode || '').trim();
+    if (cleaned.includes('code=') || cleaned.includes('join=')) {
+      const m = cleaned.match(/[?&](?:code|join)=([^&#\s]+)/i);
+      if (m && m[1]) cleaned = decodeURIComponent(m[1]);
+    }
+    const rawAlpha = cleaned.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const suffix = rawAlpha.startsWith('TB') && rawAlpha.length > 2 ? rawAlpha.substring(2) : rawAlpha;
+    const formattedCode = `TB-${suffix}`;
 
-    // 1. Fetch game
-    const { data: game, error: gameError } = await client
+    // 1. Fetch game (try exact formatted code, then suffix, then raw)
+    let game: Game | null = null;
+    const { data: exactMatch } = await client
       .from('games')
       .select('*')
-      .eq('game_code', formattedCode)
-      .single();
+      .or(`game_code.eq.${formattedCode},game_code.eq.${suffix},game_code.ilike.%${suffix}%`)
+      .order('created_at', { ascending: false })
+      .limit(1);
 
-    if (gameError || !game) {
-      throw new Error(`Game code "${formattedCode}" not found. Please check and retry.`);
+    if (exactMatch && exactMatch.length > 0) {
+      game = exactMatch[0] as Game;
+    }
+
+    if (!game) {
+      throw new Error(`Game code "${formattedCode}" not found. Please verify the code on the host screen.`);
     }
 
     if (game.status === 'completed') {

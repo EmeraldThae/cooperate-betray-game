@@ -36,24 +36,50 @@ export function validatePlayerName(name: string): { valid: boolean; error?: stri
   return { valid: true };
 }
 
-export function validateGameCode(code: string): { valid: boolean; formatted: string; error?: string } {
+export function validateGameCode(code: string): { valid: boolean; formatted: string; rawCode: string; error?: string } {
   if (!code || typeof code !== 'string') {
-    return { valid: false, formatted: '', error: 'Please enter a Game Code.' };
+    return { valid: false, formatted: '', rawCode: '', error: 'Please enter a Game Code.' };
   }
-  let raw = code
-    .replace(/[\u200B-\u200D\uFEFF\u00A0\u2013\u2014]/g, '-')
-    .replace(/^[#'"]+|[/'"]+$/g, '')
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, '')
-    .trim();
-  if (raw.startsWith('TB') && raw.length > 2) {
-    raw = raw.substring(2);
+
+  let cleaned = String(code).trim();
+  // Strip zero-width and invisible unicode characters
+  cleaned = cleaned.replace(/[\u200B-\u200D\uFEFF\u00A0\u2013\u2014]/g, '-');
+
+  // Extract from pasted URL if present
+  if (cleaned.includes('code=') || cleaned.includes('join=') || cleaned.includes('room=')) {
+    const match = cleaned.match(/[?&](?:code|join|room)=([^&#\s]+)/i);
+    if (match && match[1]) {
+      cleaned = decodeURIComponent(match[1]);
+    }
   }
-  if (raw.length < 2) {
-    return { valid: false, formatted: `TB-${raw}`, error: 'Please enter a valid Game Code (e.g. TB-7K4P9).' };
+
+  // Strip path segments if pasted like http://.../join/TB-XYZ
+  if (cleaned.includes('/')) {
+    const parts = cleaned.split('/');
+    cleaned = parts[parts.length - 1] || cleaned;
   }
-  const formatted = `TB-${raw}`;
-  return { valid: true, formatted };
+
+  // Strip quotes, hashes, colons, underscores
+  cleaned = cleaned.replace(/^[#'"]+|[/'"]+$/g, '').trim();
+
+  // Extract alphanumeric characters
+  let alpha = cleaned.toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+  if (alpha.startsWith('TB') && alpha.length > 2) {
+    alpha = alpha.substring(2);
+  }
+
+  if (alpha.length < 2) {
+    return {
+      valid: false,
+      formatted: alpha ? `TB-${alpha}` : '',
+      rawCode: alpha,
+      error: 'Please enter a valid Game Code (e.g. TB-7K4P9 or 7K4P9).',
+    };
+  }
+
+  const formatted = `TB-${alpha}`;
+  return { valid: true, formatted, rawCode: alpha };
 }
 
 /**
