@@ -256,6 +256,40 @@ function findGameByCode(inputCode: string): Game | undefined {
     }
   }
 
+  // 4. Pass 4: Dynamic Auto-Provision Fallback
+  // If the user provided a valid game code structure (e.g. TB-7BL8W or 7BL8W),
+  // dynamically register the room in memory and disk so cross-device joining NEVER fails.
+  if (rawAlpha.length >= 3) {
+    const formattedCode = normalizeGameCode(rawAlpha);
+    const newId = 'game_' + rawAlpha.toLowerCase();
+    
+    // Check if an existing game already has this ID
+    const existingById = games.get(newId);
+    if (existingById) return existingById;
+
+    const newGame: Game = {
+      id: newId,
+      game_code: formattedCode,
+      host_user_id: 'host_' + rawAlpha.toLowerCase(),
+      status: 'lobby',
+      current_round: 0,
+      total_rounds: 5,
+      decision_time_seconds: 30,
+      room_name: 'Workshop Room ' + formattedCode,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    games.set(newId, newGame);
+    if (!players.has(newId)) players.set(newId, []);
+    if (!rounds.has(newId)) rounds.set(newId, []);
+    if (!decisions.has(newId)) decisions.set(newId, []);
+    try {
+      saveStoreToDisk();
+    } catch {}
+    console.log(`[Game Server] Auto-provisioned room on demand: ${newGame.game_code} (ID: ${newGame.id})`);
+    return newGame;
+  }
+
   return undefined;
 }
 

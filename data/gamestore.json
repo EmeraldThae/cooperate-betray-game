@@ -142,6 +142,18 @@
       "current_round": 0,
       "created_at": "2026-08-25T08:45:00.000Z",
       "updated_at": "2026-08-25T08:48:34.044Z"
+    },
+    "game_7bl8w": {
+      "id": "game_7bl8w",
+      "game_code": "TB-7BL8W",
+      "host_user_id": "host_7bl8w",
+      "status": "lobby",
+      "current_round": 0,
+      "total_rounds": 5,
+      "decision_time_seconds": 30,
+      "room_name": "Workshop Room TB-7BL8W",
+      "created_at": "2026-08-25T09:02:38.574Z",
+      "updated_at": "2026-08-25T09:02:38.574Z"
     }
   },
   "players": {
@@ -331,6 +343,19 @@
         "joined_at": "2026-08-25T08:48:43.299Z",
         "last_seen_at": "2026-08-25T08:48:43.299Z"
       }
+    ],
+    "game_7bl8w": [
+      {
+        "id": "player_7vk9jk06",
+        "game_id": "game_7bl8w",
+        "user_id": "user_kdgptoc",
+        "player_name": "MobilePlayer1",
+        "score": 0,
+        "status": "waiting",
+        "avatar": "🚀",
+        "joined_at": "2026-08-25T09:02:38.607Z",
+        "last_seen_at": "2026-08-25T09:02:38.607Z"
+      }
     ]
   },
   "rounds": {
@@ -355,7 +380,8 @@
     "game_he4ky79d": [],
     "game_wv9haqkq": [],
     "game_fobgat29": [],
-    "game_84rjl": []
+    "game_84rjl": [],
+    "game_7bl8w": []
   },
   "decisions": {
     "game_khsvzxxz": [
@@ -386,6 +412,7 @@
     "game_he4ky79d": [],
     "game_wv9haqkq": [],
     "game_fobgat29": [],
-    "game_84rjl": []
+    "game_84rjl": [],
+    "game_7bl8w": []
   }
 }
