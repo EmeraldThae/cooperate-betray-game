@@ -105,6 +105,47 @@ export class ServerGameService {
     }
   }
 
+  static async checkGameCode(gameCode: string): Promise<{
+    exists: boolean;
+    gameCode?: string;
+    status?: string;
+    roomName?: string;
+    totalRounds?: number;
+    decisionTimeSeconds?: number;
+    playerCount?: number;
+    error?: string;
+  }> {
+    if (!gameCode || !gameCode.trim()) {
+      return { exists: false, error: 'Please provide a game code.' };
+    }
+    const clean = encodeURIComponent(gameCode.trim());
+    try {
+      const res = await fetch(`${this.getBaseUrl()}/api/games/check/${clean}`);
+      if (res.ok) {
+        return await res.json();
+      }
+      const err = await res.json().catch(() => ({}));
+      return { exists: false, error: err.error || 'Game code not found.' };
+    } catch {
+      // Check mock store fallback
+      try {
+        const active = await MockGameService.getActiveGames();
+        const found = active.find((g) => g.game_code.toUpperCase().includes(gameCode.toUpperCase().replace(/[^A-Z0-9]/g, '')));
+        if (found) {
+          return {
+            exists: true,
+            gameCode: found.game_code,
+            status: found.status,
+            roomName: found.room_name,
+            totalRounds: found.total_rounds,
+            playerCount: found.player_count,
+          };
+        }
+      } catch {}
+      return { exists: false, error: 'Unable to verify game code on server.' };
+    }
+  }
+
   static async getActiveGames(): Promise<Array<{
     id: string;
     game_code: string;

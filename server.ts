@@ -333,6 +333,8 @@ async function startServer() {
       gameCode: targetGame.game_code,
       status: targetGame.status,
       roomName: targetGame.room_name,
+      totalRounds: targetGame.total_rounds,
+      decisionTimeSeconds: targetGame.decision_time_seconds,
       playerCount: currentPlayers.length,
     });
   });

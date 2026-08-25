@@ -289,6 +289,9 @@ export const Lobby: React.FC<LobbyProps> = ({
                 className="w-44 h-44 rounded-lg object-contain"
               />
             </div>
+            <div className="w-full bg-slate-900/90 border border-slate-800 rounded-xl px-3 py-2 text-[11px] font-mono text-slate-300 break-all text-center select-all">
+              {joinUrl}
+            </div>
             <p className="text-[11px] text-slate-400">
               Open your phone camera to open the game with Code <span className="font-mono text-amber-400 font-bold">{game.game_code}</span> automatically loaded.
             </p>

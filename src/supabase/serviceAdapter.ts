@@ -82,6 +82,19 @@ export class GameService {
     return await ServerGameService.joinGame(gameCode, playerName, avatar);
   }
 
+  static async checkGameCode(gameCode: string): Promise<{
+    exists: boolean;
+    gameCode?: string;
+    status?: string;
+    roomName?: string;
+    totalRounds?: number;
+    decisionTimeSeconds?: number;
+    playerCount?: number;
+    error?: string;
+  }> {
+    return await ServerGameService.checkGameCode(gameCode);
+  }
+
   static async getActiveGames(): Promise<Array<{
     id: string;
     game_code: string;
