@@ -190,7 +190,7 @@ export class MockGameService {
     store.players[targetGame.id] = currentPlayers;
     saveStore(store);
 
-    return { game, player: newPlayer, userId };
+    return { game: targetGame, player: newPlayer, userId };
   }
 
   static async addSimulatedPlayer(gameId: string, name: string, avatar: string = '🤖'): Promise<Player> {

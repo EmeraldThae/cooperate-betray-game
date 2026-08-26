@@ -38,7 +38,7 @@ const RANDOM_AVATARS = ['🦊', '🦁', '🐺', '🦉', '🚀', '💎', '🛡️
 
 export const Lobby: React.FC<LobbyProps> = ({
   game,
-  players,
+  players = [],
   role,
   currentPlayerId,
   onStartGame,
@@ -52,11 +52,11 @@ export const Lobby: React.FC<LobbyProps> = ({
   const [pairings, setPairings] = useState<Array<[Player, Player]>>([]);
 
   const isHost = role === 'host';
-  const currentPlayer = players.find((p) => p.id === currentPlayerId);
+  const currentPlayer = players?.find((p) => p && p.id === currentPlayerId);
 
   // Keep game continuously registered and active on central server
   useEffect(() => {
-    if (!game) return;
+    if (!game || !game.id) return;
     GameService.syncGame(game, players).catch(() => {});
     const interval = setInterval(() => {
       GameService.syncGame(game, players).catch(() => {});
@@ -64,12 +64,21 @@ export const Lobby: React.FC<LobbyProps> = ({
     return () => clearInterval(interval);
   }, [game, players]);
 
+  if (!game) {
+    return (
+      <div className="w-full max-w-lg mx-auto px-4 py-12 text-center text-slate-400">
+        Loading room lobby...
+      </div>
+    );
+  }
+
   const getJoinUrl = () => {
-    if (typeof window === 'undefined') return '';
+    if (typeof window === 'undefined' || !game?.game_code) return '';
     return `${window.location.origin}/?code=${encodeURIComponent(game.game_code)}`;
   };
 
   const handleCopyCode = () => {
+    if (!game?.game_code) return;
     navigator.clipboard.writeText(game.game_code);
     setCopiedCode(true);
     playSound('click');
@@ -78,6 +87,7 @@ export const Lobby: React.FC<LobbyProps> = ({
 
   const handleCopyLink = () => {
     const url = getJoinUrl();
+    if (!url) return;
     navigator.clipboard.writeText(url);
     setCopiedLink(true);
     playSound('click');
@@ -85,7 +95,7 @@ export const Lobby: React.FC<LobbyProps> = ({
   };
 
   const handleStart = async () => {
-    if (role !== 'host') return;
+    if (role !== 'host' || !game?.id) return;
     setIsStarting(true);
     playSound('submit');
     try {
@@ -99,18 +109,19 @@ export const Lobby: React.FC<LobbyProps> = ({
 
   // Random 2-Player Setup for Host
   const handleRandomTwoPlayerSetup = async () => {
-    if (role !== 'host') return;
+    if (role !== 'host' || !game?.id) return;
     setIsRandomizing(true);
     playSound('click');
 
     try {
-      if (players.length < 2) {
-        const needed = 2 - players.length;
-        const existingNames = new Set(players.map((p) => p.player_name.toLowerCase()));
+      if ((players?.length || 0) < 2) {
+        const currentLen = players?.length || 0;
+        const needed = 2 - currentLen;
+        const existingNames = new Set((players || []).map((p) => p.player_name.toLowerCase()));
         const availableNames = RANDOM_NAMES.filter((n) => !existingNames.has(n.toLowerCase()));
 
         for (let i = 0; i < needed; i++) {
-          const name = availableNames[i] || `Player ${players.length + 1 + i}`;
+          const name = availableNames[i] || `Player ${currentLen + 1 + i}`;
           const avatar = RANDOM_AVATARS[Math.floor(Math.random() * RANDOM_AVATARS.length)];
           await GameService.addSimulatedPlayer(game.id, name, avatar);
         }
@@ -126,7 +137,7 @@ export const Lobby: React.FC<LobbyProps> = ({
 
   // Generate random 2-player pairs for the room
   const handleGeneratePairs = async () => {
-    if (players.length < 2) return;
+    if ((players?.length || 0) < 2 || !game?.id) return;
     setIsRandomizing(true);
     playSound('click');
     try {
@@ -404,11 +415,11 @@ export const Lobby: React.FC<LobbyProps> = ({
                         p2Avatar: p2?.avatar || '⚡',
                       };
                     })
-                  : pairings.map((pair) => ({
-                      p1Name: pair[0].player_name,
-                      p1Avatar: pair[0].avatar || '🛡️',
-                      p2Name: pair[1].player_name,
-                      p2Avatar: pair[1].avatar || '⚡',
+                  : (pairings || []).map((pair) => ({
+                      p1Name: pair[0]?.player_name || 'Player 1',
+                      p1Avatar: pair[0]?.avatar || '🛡️',
+                      p2Name: pair[1]?.player_name || 'Player 2',
+                      p2Avatar: pair[1]?.avatar || '⚡',
                     }))
                 ).map((pair, idx) => (
                   <div
