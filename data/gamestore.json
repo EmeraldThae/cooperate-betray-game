@@ -154,6 +154,30 @@
       "room_name": "Workshop Room TB-7BL8W",
       "created_at": "2026-08-25T09:02:38.574Z",
       "updated_at": "2026-08-25T09:02:38.574Z"
+    },
+    "game_tb6tttf": {
+      "id": "game_tb6tttf",
+      "game_code": "TB-6TTTF",
+      "host_user_id": "host_tb6tttf",
+      "status": "lobby",
+      "current_round": 0,
+      "total_rounds": 5,
+      "decision_time_seconds": 30,
+      "room_name": "Workshop Room TB-6TTTF",
+      "created_at": "2026-08-25T09:37:27.889Z",
+      "updated_at": "2026-08-25T09:37:27.889Z"
+    },
+    "game_9m4kl": {
+      "id": "game_9m4kl",
+      "game_code": "TB-9M4KL",
+      "host_user_id": "host_9m4kl",
+      "status": "lobby",
+      "current_round": 0,
+      "total_rounds": 5,
+      "decision_time_seconds": 30,
+      "room_name": "Workshop Room TB-9M4KL",
+      "created_at": "2026-08-25T09:38:22.011Z",
+      "updated_at": "2026-08-25T09:38:22.011Z"
     }
   },
   "players": {
@@ -356,6 +380,43 @@
         "joined_at": "2026-08-25T09:02:38.607Z",
         "last_seen_at": "2026-08-25T09:02:38.607Z"
       }
+    ],
+    "game_tb6tttf": [
+      {
+        "id": "player_j9ktdndx",
+        "game_id": "game_tb6tttf",
+        "user_id": "user_o9yy2jx",
+        "player_name": "MobileUser",
+        "score": 0,
+        "status": "waiting",
+        "avatar": "🚀",
+        "joined_at": "2026-08-25T09:37:37.122Z",
+        "last_seen_at": "2026-08-25T09:37:37.122Z"
+      },
+      {
+        "id": "player_s9juy8ol",
+        "game_id": "game_tb6tttf",
+        "user_id": "user_d5ey94e",
+        "player_name": "Device2User",
+        "score": 0,
+        "status": "waiting",
+        "avatar": "🦉",
+        "joined_at": "2026-08-25T09:38:19.488Z",
+        "last_seen_at": "2026-08-25T09:38:19.488Z"
+      }
+    ],
+    "game_9m4kl": [
+      {
+        "id": "player_wz8my2eq",
+        "game_id": "game_9m4kl",
+        "user_id": "user_qjurtz6",
+        "player_name": "PhonePlayer",
+        "score": 0,
+        "status": "waiting",
+        "avatar": "🚀",
+        "joined_at": "2026-08-25T09:38:22.028Z",
+        "last_seen_at": "2026-08-25T09:38:22.028Z"
+      }
     ]
   },
   "rounds": {
@@ -381,7 +442,9 @@
     "game_wv9haqkq": [],
     "game_fobgat29": [],
     "game_84rjl": [],
-    "game_7bl8w": []
+    "game_7bl8w": [],
+    "game_tb6tttf": [],
+    "game_9m4kl": []
   },
   "decisions": {
     "game_khsvzxxz": [
@@ -413,6 +476,8 @@
     "game_wv9haqkq": [],
     "game_fobgat29": [],
     "game_84rjl": [],
-    "game_7bl8w": []
+    "game_7bl8w": [],
+    "game_tb6tttf": [],
+    "game_9m4kl": []
   }
 }
