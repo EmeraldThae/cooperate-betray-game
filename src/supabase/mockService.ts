@@ -123,15 +123,32 @@ export class MockGameService {
       );
     });
 
-    if (!game) {
-      throw new Error(`Game code "${formattedCode}" not found. Please verify the room code.`);
+    let targetGame = game;
+    if (!targetGame) {
+      targetGame = {
+        id: 'game_' + targetSuffix.toLowerCase(),
+        game_code: formattedCode,
+        host_user_id: 'mock_host_' + targetSuffix.toLowerCase(),
+        status: 'lobby',
+        current_round: 0,
+        total_rounds: 5,
+        decision_time_seconds: 30,
+        room_name: 'Workshop Room ' + formattedCode,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      store.games[targetGame.id] = targetGame;
+      store.players[targetGame.id] = [];
+      store.rounds[targetGame.id] = [];
+      store.decisions[targetGame.id] = [];
+      saveStore(store);
     }
 
-    if (game.status === 'completed') {
+    if (targetGame.status === 'completed') {
       throw new Error('This game session has already finished.');
     }
 
-    const currentPlayers = store.players[game.id] || [];
+    const currentPlayers = store.players[targetGame.id] || [];
     let userId = localStorage.getItem('tb_user_id') || 'mock_user_' + Math.random().toString(36).substring(2, 9);
     localStorage.setItem('tb_user_id', userId);
 
@@ -154,23 +171,23 @@ export class MockGameService {
       existingSelf.avatar = avatar;
       existingSelf.last_seen_at = new Date().toISOString();
       saveStore(store);
-      return { game, player: existingSelf, userId };
+      return { game: targetGame, player: existingSelf, userId };
     }
 
     const newPlayer: Player = {
       id: 'player_' + Math.random().toString(36).substring(2, 10),
-      game_id: game.id,
+      game_id: targetGame.id,
       user_id: userId,
       player_name: trimmedName,
       score: 0,
-      status: game.status === 'round_active' ? 'playing' : 'waiting',
+      status: targetGame.status === 'round_active' ? 'playing' : 'waiting',
       avatar,
       joined_at: new Date().toISOString(),
       last_seen_at: new Date().toISOString(),
     };
 
     currentPlayers.push(newPlayer);
-    store.players[game.id] = currentPlayers;
+    store.players[targetGame.id] = currentPlayers;
     saveStore(store);
 
     return { game, player: newPlayer, userId };

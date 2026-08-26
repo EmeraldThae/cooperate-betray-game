@@ -170,13 +170,21 @@ function cleanCodeString(input: string): string {
   return cleaned;
 }
 
-function normalizeGameCode(code: string): string {
-  const cleaned = cleanCodeString(code);
-  let alphanumericOnly = cleaned.toUpperCase().replace(/[^A-Z0-9]/g, '');
-  if (alphanumericOnly.startsWith('TB') && alphanumericOnly.length > 2) {
-    alphanumericOnly = alphanumericOnly.substring(2);
+function extractCodeSuffix(input: string): string {
+  const cleaned = cleanCodeString(input);
+  let alpha = cleaned.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (alpha.startsWith('GAME') && alpha.length > 4) {
+    alpha = alpha.substring(4);
   }
-  return `TB-${alphanumericOnly}`;
+  if (alpha.startsWith('TB') && alpha.length > 2) {
+    alpha = alpha.substring(2);
+  }
+  return alpha;
+}
+
+function normalizeGameCode(code: string): string {
+  const suffix = extractCodeSuffix(code);
+  return suffix ? `TB-${suffix}` : 'TB-ROOM';
 }
 
 // Convert visually ambiguous characters to standardized canonical forms
@@ -194,10 +202,13 @@ function standardizeLookalikes(str: string): string {
 function findGameByCode(inputCode: string): Game | undefined {
   if (!inputCode) return undefined;
   const rawInput = cleanCodeString(inputCode);
-  const targetNorm = normalizeGameCode(rawInput);
-  const rawAlpha = rawInput.toUpperCase().replace(/[^A-Z0-9]/g, '');
-  const rawSuffix = rawAlpha.startsWith('TB') && rawAlpha.length > 2 ? rawAlpha.substring(2) : rawAlpha;
-  const targetStandard = standardizeLookalikes(rawSuffix);
+  if (!rawInput) return undefined;
+
+  const targetSuffix = extractCodeSuffix(rawInput);
+  const targetNorm = targetSuffix ? `TB-${targetSuffix}` : normalizeGameCode(rawInput);
+  const targetStandard = standardizeLookalikes(targetSuffix);
+  const canonicalId = 'game_' + targetSuffix.toLowerCase();
+  const canonicalAltId = 'game_tb' + targetSuffix.toLowerCase();
 
   // Always refresh in-memory with any disk data
   try {
@@ -214,63 +225,66 @@ function findGameByCode(inputCode: string): Game | undefined {
     // Non-fatal
   }
 
-  // 1. Pass 1: Exact matches (game_code, formatted, ID, suffix)
+  // 1. Direct Map Key / Canonical ID lookup
+  if (games.has(rawInput)) return games.get(rawInput);
+  if (games.has(rawInput.toLowerCase())) return games.get(rawInput.toLowerCase());
+  if (targetSuffix && games.has(canonicalId)) return games.get(canonicalId);
+  if (targetSuffix && games.has(canonicalAltId)) return games.get(canonicalAltId);
+
+  // 2. Exact match in games values
   for (const g of games.values()) {
-    const gNorm = normalizeGameCode(g.game_code);
-    const gAlpha = g.game_code.toUpperCase().replace(/[^A-Z0-9]/g, '');
-    const gSuffix = gAlpha.startsWith('TB') && gAlpha.length > 2 ? gAlpha.substring(2) : gAlpha;
+    const gSuffix = extractCodeSuffix(g.game_code || g.id);
     const gId = g.id.toLowerCase();
     const inputLower = rawInput.toLowerCase();
 
     if (
       gId === inputLower ||
       g.game_code.toUpperCase() === rawInput.toUpperCase() ||
-      gNorm === targetNorm ||
-      gAlpha === rawAlpha ||
-      (rawSuffix.length >= 3 && gSuffix === rawSuffix)
+      g.game_code.toUpperCase() === targetNorm.toUpperCase() ||
+      (targetSuffix && gSuffix === targetSuffix)
     ) {
       return g;
     }
   }
 
-  // 2. Pass 2: Lookalike character matching for active games (e.g. 0 vs O, 1 vs L, 5 vs S)
-  for (const g of games.values()) {
-    if (g.status === 'completed') continue;
-    const gAlpha = g.game_code.toUpperCase().replace(/[^A-Z0-9]/g, '');
-    const gSuffix = gAlpha.startsWith('TB') && gAlpha.length > 2 ? gAlpha.substring(2) : gAlpha;
-    const gStandard = standardizeLookalikes(gSuffix);
-
-    if (rawSuffix.length >= 3 && gStandard === targetStandard) {
-      return g;
+  // 3. Lookalike character matching for active games (e.g. 0 vs O, 1 vs L, 5 vs S)
+  if (targetSuffix.length >= 3) {
+    for (const g of games.values()) {
+      if (g.status === 'completed') continue;
+      const gSuffix = extractCodeSuffix(g.game_code || g.id);
+      const gStandard = standardizeLookalikes(gSuffix);
+      if (gStandard === targetStandard) {
+        return g;
+      }
     }
   }
 
-  // 3. Pass 3: If only 1 active lobby game exists on server and rawSuffix is close (length >= 3)
-  const activeLobbyGames = Array.from(games.values()).filter((g) => g.status === 'lobby');
-  if (activeLobbyGames.length === 1 && rawSuffix.length >= 4) {
-    const single = activeLobbyGames[0];
-    const sAlpha = single.game_code.toUpperCase().replace(/[^A-Z0-9]/g, '');
-    const sSuffix = sAlpha.startsWith('TB') && sAlpha.length > 2 ? sAlpha.substring(2) : sAlpha;
-    if (sSuffix.startsWith(rawSuffix.substring(0, 3)) || rawSuffix.startsWith(sSuffix.substring(0, 3))) {
-      return single;
+  // 4. Prefix / partial match if length >= 4
+  if (targetSuffix.length >= 4) {
+    for (const g of games.values()) {
+      if (g.status === 'completed') continue;
+      const gSuffix = extractCodeSuffix(g.game_code || g.id);
+      if (gSuffix.startsWith(targetSuffix) || targetSuffix.startsWith(gSuffix)) {
+        return g;
+      }
     }
   }
 
-  // 4. Pass 4: Dynamic Auto-Provision Fallback
-  // If the user provided a valid game code structure (e.g. TB-7BL8W or 7BL8W),
-  // dynamically register the room in memory and disk so cross-device joining NEVER fails.
-  if (rawAlpha.length >= 3) {
-    const formattedCode = normalizeGameCode(rawAlpha);
-    const newId = 'game_' + rawAlpha.toLowerCase();
+  // 5. Dynamic Provisioning Fallback:
+  // If the user provided a valid game code structure (e.g. TB-7BL8W or 7BL8W or TB-6TTTF),
+  // dynamically instantiate the canonical room session so cross-device joining from any browser NEVER fails.
+  if (targetSuffix.length >= 2) {
+    const newId = canonicalId;
+    const formattedCode = targetNorm;
     
     // Check if an existing game already has this ID
-    const existingById = games.get(newId);
+    const existingById = games.get(newId) || games.get(canonicalAltId);
     if (existingById) return existingById;
 
     const newGame: Game = {
       id: newId,
       game_code: formattedCode,
-      host_user_id: 'host_' + rawAlpha.toLowerCase(),
+      host_user_id: 'host_' + targetSuffix.toLowerCase(),
       status: 'lobby',
       current_round: 0,
       total_rounds: 5,
@@ -286,24 +300,30 @@ function findGameByCode(inputCode: string): Game | undefined {
     try {
       saveStoreToDisk();
     } catch {}
-    console.log(`[Game Server] Auto-provisioned room on demand: ${newGame.game_code} (ID: ${newGame.id})`);
+    console.log(`[Game Server] Instantiated room: ${newGame.game_code} (ID: ${newGame.id})`);
     return newGame;
   }
 
   return undefined;
 }
 
+function resolveGame(idOrCode: string): Game | undefined {
+  if (!idOrCode) return undefined;
+  if (games.has(idOrCode)) return games.get(idOrCode);
+  return findGameByCode(idOrCode);
+}
+
 function broadcastGameUpdate(gameId: string) {
-  const clients = sseClients.get(gameId);
-  if (!clients || clients.size === 0) return;
+  const resolved = resolveGame(gameId);
+  const targetId = resolved ? resolved.id : gameId;
 
-  const game = games.get(gameId);
-  const pList = players.get(gameId) || [];
-  const rList = rounds.get(gameId) || [];
+  const game = resolved || games.get(targetId);
+  const pList = players.get(targetId) || [];
+  const rList = rounds.get(targetId) || [];
   const currentRound = game ? rList.find((r) => r.round_number === game.current_round) || null : null;
-  const dList = currentRound ? (decisions.get(gameId) || []).filter((d) => d.round_id === currentRound.id) : [];
+  const dList = currentRound ? (decisions.get(targetId) || []).filter((d) => d.round_id === currentRound.id) : [];
 
-  const allDList = decisions.get(gameId) || [];
+  const allDList = decisions.get(targetId) || [];
 
   const payload = JSON.stringify({
     type: 'UPDATE',
@@ -316,12 +336,20 @@ function broadcastGameUpdate(gameId: string) {
     timestamp: Date.now(),
   });
 
-  clients.forEach((res) => {
-    try {
-      res.write(`data: ${payload}\n\n`);
-    } catch {
-      clients.delete(res);
-    }
+  const clientSets = [sseClients.get(targetId), sseClients.get(gameId)];
+  const sent = new Set<Response>();
+
+  clientSets.forEach((set) => {
+    if (!set) return;
+    set.forEach((res) => {
+      if (sent.has(res)) return;
+      sent.add(res);
+      try {
+        res.write(`data: ${payload}\n\n`);
+      } catch {
+        set.delete(res);
+      }
+    });
   });
 }
 
@@ -406,9 +434,6 @@ async function startServer() {
       const roomName = String(body.roomName || 'Corporate Workshop').trim();
       const requestedCode = body.gameCode ? normalizeGameCode(String(body.gameCode)) : null;
 
-      const gameId = body.id || 'game_' + Math.random().toString(36).substring(2, 10);
-      const userId = body.hostUserId || body.userId || 'host_' + Math.random().toString(36).substring(2, 9);
-      
       let code = requestedCode || generateGameCode();
       if (!requestedCode) {
         // Ensure unique code
@@ -417,25 +442,42 @@ async function startServer() {
         }
       }
 
+      const suffix = extractCodeSuffix(code);
+      const canonicalId = 'game_' + suffix.toLowerCase();
+      const gameId = body.id || canonicalId;
+      const userId = body.hostUserId || body.userId || 'host_' + suffix.toLowerCase();
       const now = new Date().toISOString();
 
-      const game: Game = {
-        id: gameId,
-        game_code: code,
-        host_user_id: userId,
-        status: body.status || 'lobby',
-        current_round: Number(body.currentRound) || 0,
-        total_rounds: Math.max(1, Math.min(50, totalRounds)),
-        decision_time_seconds: Math.max(10, Math.min(300, decisionTimeSeconds)),
-        room_name: roomName || 'Corporate Workshop',
-        created_at: body.createdAt || now,
-        updated_at: now,
-      };
+      let existing = games.get(gameId) || games.get(canonicalId) || findGameByCode(code);
+      let game: Game;
 
-      games.set(gameId, game);
-      if (!players.has(gameId)) players.set(gameId, body.players || []);
-      if (!rounds.has(gameId)) rounds.set(gameId, body.rounds || []);
-      if (!decisions.has(gameId)) decisions.set(gameId, body.decisions || []);
+      if (existing) {
+        existing.room_name = roomName;
+        existing.total_rounds = Math.max(1, Math.min(50, totalRounds));
+        existing.decision_time_seconds = Math.max(10, Math.min(300, decisionTimeSeconds));
+        existing.status = body.status || 'lobby';
+        existing.host_user_id = userId;
+        existing.updated_at = now;
+        game = existing;
+        games.set(game.id, game);
+      } else {
+        game = {
+          id: gameId,
+          game_code: code,
+          host_user_id: userId,
+          status: body.status || 'lobby',
+          current_round: Number(body.currentRound) || 0,
+          total_rounds: Math.max(1, Math.min(50, totalRounds)),
+          decision_time_seconds: Math.max(10, Math.min(300, decisionTimeSeconds)),
+          room_name: roomName || 'Corporate Workshop',
+          created_at: body.createdAt || now,
+          updated_at: now,
+        };
+        games.set(gameId, game);
+        if (!players.has(gameId)) players.set(gameId, body.players || []);
+        if (!rounds.has(gameId)) rounds.set(gameId, body.rounds || []);
+        if (!decisions.has(gameId)) decisions.set(gameId, body.decisions || []);
+      }
 
       try {
         saveStoreToDisk();
@@ -455,28 +497,33 @@ async function startServer() {
   app.post('/api/games/sync', (req: Request, res: Response) => {
     try {
       const { game, players: pList, rounds: rList, decisions: dList } = req.body || {};
-      if (!game || !game.id || !game.game_code) {
+      if (!game || (!game.id && !game.game_code)) {
         res.status(400).json({ error: 'Valid game object is required for sync.' });
         return;
       }
 
-      const normalizedCode = normalizeGameCode(game.game_code);
-      const existing = games.get(game.id);
+      const normalizedCode = normalizeGameCode(game.game_code || game.id);
+      const suffix = extractCodeSuffix(game.game_code || game.id);
+      const canonicalId = 'game_' + suffix.toLowerCase();
+      const targetId = game.id || canonicalId;
+
+      let existing = games.get(targetId) || games.get(canonicalId) || findGameByCode(normalizedCode);
 
       if (!existing) {
         // Register new game from client
         const registeredGame: Game = {
           ...game,
+          id: targetId,
           game_code: normalizedCode,
           updated_at: new Date().toISOString(),
         };
-        games.set(game.id, registeredGame);
-        if (pList && Array.isArray(pList)) players.set(game.id, pList);
-        else if (!players.has(game.id)) players.set(game.id, []);
-        if (rList && Array.isArray(rList)) rounds.set(game.id, rList);
-        else if (!rounds.has(game.id)) rounds.set(game.id, []);
-        if (dList && Array.isArray(dList)) decisions.set(game.id, dList);
-        else if (!decisions.has(game.id)) decisions.set(game.id, []);
+        games.set(targetId, registeredGame);
+        if (pList && Array.isArray(pList)) players.set(targetId, pList);
+        else if (!players.has(targetId)) players.set(targetId, []);
+        if (rList && Array.isArray(rList)) rounds.set(targetId, rList);
+        else if (!rounds.has(targetId)) rounds.set(targetId, []);
+        if (dList && Array.isArray(dList)) decisions.set(targetId, dList);
+        else if (!decisions.has(targetId)) decisions.set(targetId, []);
 
         saveStoreToDisk();
         console.log(`[Game Server] Synced new game from client: ${registeredGame.game_code} (ID: ${registeredGame.id})`);
@@ -485,9 +532,18 @@ async function startServer() {
         // Update existing game
         existing.status = game.status || existing.status;
         existing.current_round = game.current_round ?? existing.current_round;
+        if (game.room_name) existing.room_name = game.room_name;
+        if (game.total_rounds) existing.total_rounds = game.total_rounds;
+        if (game.decision_time_seconds) existing.decision_time_seconds = game.decision_time_seconds;
         existing.updated_at = new Date().toISOString();
         if (pList && Array.isArray(pList)) {
-          players.set(game.id, pList);
+          players.set(existing.id, pList);
+        }
+        if (rList && Array.isArray(rList)) {
+          rounds.set(existing.id, rList);
+        }
+        if (dList && Array.isArray(dList)) {
+          decisions.set(existing.id, dList);
         }
         saveStoreToDisk();
         res.json({ success: true, registered: false, game: existing });
@@ -586,18 +642,19 @@ async function startServer() {
   // Get Game Details
   app.get('/api/games/:gameId', (req: Request, res: Response) => {
     const { gameId } = req.params;
-    const game = games.get(gameId);
+    const game = resolveGame(gameId);
     if (!game) {
       res.status(404).json({ error: 'Game not found.' });
       return;
     }
 
-    const pList = players.get(gameId) || [];
-    const rList = rounds.get(gameId) || [];
+    const gId = game.id;
+    const pList = players.get(gId) || [];
+    const rList = rounds.get(gId) || [];
     const currentRound = rList.find((r) => r.round_number === game.current_round) || null;
-    const dList = currentRound ? (decisions.get(gameId) || []).filter((d) => d.round_id === currentRound.id) : [];
+    const dList = currentRound ? (decisions.get(gId) || []).filter((d) => d.round_id === currentRound.id) : [];
 
-    const allDList = decisions.get(gameId) || [];
+    const allDList = decisions.get(gId) || [];
 
     res.json({
       game,
@@ -613,14 +670,15 @@ async function startServer() {
   app.post('/api/games/:gameId/randomize-pairs', (req: Request, res: Response) => {
     const { gameId } = req.params;
     const { roundNumber, customPairs } = req.body || {};
-    const game = games.get(gameId);
+    const game = resolveGame(gameId);
 
     if (!game) {
       res.status(404).json({ error: 'Game not found' });
       return;
     }
 
-    const pList = players.get(gameId) || [];
+    const gId = game.id;
+    const pList = players.get(gId) || [];
     const rNum = Number(roundNumber) || (game.current_round || 1);
     
     let pairings: PlayerPairing[] = [];
@@ -633,14 +691,14 @@ async function startServer() {
     game.current_pairings = pairings;
     game.updated_at = new Date().toISOString();
 
-    const rList = rounds.get(gameId) || [];
+    const rList = rounds.get(gId) || [];
     const currentRound = rList.find((r) => r.round_number === rNum);
     if (currentRound) {
       currentRound.pairings = pairings;
     }
 
     saveStoreToDisk();
-    broadcastGameUpdate(gameId);
+    broadcastGameUpdate(gId);
     console.log(`[Game Server] Generated ${pairings.length} random pairs for game ${game.game_code}`);
     res.json({ success: true, pairings });
   });
@@ -649,13 +707,14 @@ async function startServer() {
   app.post('/api/games/:gameId/start-round', (req: Request, res: Response) => {
     const { gameId } = req.params;
     const { roundNumber } = req.body || {};
-    const game = games.get(gameId);
+    const game = resolveGame(gameId);
 
     if (!game) {
       res.status(404).json({ error: 'Game not found' });
       return;
     }
 
+    const gId = game.id;
     const now = new Date().toISOString();
     const rNum = Number(roundNumber) || (game.current_round + 1);
 
@@ -664,25 +723,24 @@ async function startServer() {
     game.updated_at = now;
 
     // Reset players to playing
-    const pList = players.get(gameId) || [];
+    const pList = players.get(gId) || [];
     pList.forEach((p) => {
       p.status = 'playing';
     });
 
     // Ensure 2-player random pairings for this round
     let rPairings = game.current_pairings;
-    // Generate fresh pairings per round if not already generated or if round changes
     if (!rPairings || rPairings.length === 0 || rPairings[0]?.round_number !== rNum) {
       rPairings = generatePairings(pList, rNum);
       game.current_pairings = rPairings;
     }
 
-    const rList = rounds.get(gameId) || [];
+    const rList = rounds.get(gId) || [];
     let round = rList.find((r) => r.round_number === rNum);
     if (!round) {
       round = {
         id: 'round_' + Math.random().toString(36).substring(2, 10),
-        game_id: gameId,
+        game_id: gId,
         round_number: rNum,
         status: 'active',
         pairings: rPairings,
@@ -696,10 +754,10 @@ async function startServer() {
       round.revealed_at = undefined;
       round.ended_at = undefined;
     }
-    rounds.set(gameId, rList);
+    rounds.set(gId, rList);
 
     saveStoreToDisk();
-    broadcastGameUpdate(gameId);
+    broadcastGameUpdate(gId);
     res.json(round);
   });
 
@@ -708,13 +766,14 @@ async function startServer() {
     const { gameId } = req.params;
     const { roundId, playerId, decision } = req.body || {};
 
-    const game = games.get(gameId);
+    const game = resolveGame(gameId);
     if (!game) {
       res.status(404).json({ error: 'Game not found' });
       return;
     }
 
-    const dList = decisions.get(gameId) || [];
+    const gId = game.id;
+    const dList = decisions.get(gId) || [];
     let existing = dList.find((d) => d.round_id === roundId && d.player_id === playerId);
     const now = new Date().toISOString();
 
@@ -732,17 +791,17 @@ async function startServer() {
       };
       dList.push(existing);
     }
-    decisions.set(gameId, dList);
+    decisions.set(gId, dList);
 
     // Mark player as submitted
-    const pList = players.get(gameId) || [];
+    const pList = players.get(gId) || [];
     const player = pList.find((p) => p.id === playerId);
     if (player) {
       player.status = 'submitted';
     }
 
     saveStoreToDisk();
-    broadcastGameUpdate(gameId);
+    broadcastGameUpdate(gId);
     res.json(existing);
   });
 
@@ -751,21 +810,22 @@ async function startServer() {
     const { gameId } = req.params;
     const { roundId } = req.body || {};
 
-    const game = games.get(gameId);
+    const game = resolveGame(gameId);
     if (!game) {
       res.status(404).json({ error: 'Game not found' });
       return;
     }
 
-    const rList = rounds.get(gameId) || [];
+    const gId = game.id;
+    const rList = rounds.get(gId) || [];
     const round = rList.find((r) => r.id === roundId);
     if (!round) {
       res.status(404).json({ error: 'Round not found' });
       return;
     }
 
-    const pList = players.get(gameId) || [];
-    const dList = decisions.get(gameId) || [];
+    const pList = players.get(gId) || [];
+    const dList = decisions.get(gId) || [];
     const now = new Date().toISOString();
 
     // Auto-fill missing decisions with no_decision
@@ -867,9 +927,9 @@ async function startServer() {
     game.current_pairings = activePairings;
     game.updated_at = now;
 
-    decisions.set(gameId, dList);
+    decisions.set(gId, dList);
     saveStoreToDisk();
-    broadcastGameUpdate(gameId);
+    broadcastGameUpdate(gId);
 
     res.json({ success: true, roundId });
   });
@@ -877,51 +937,53 @@ async function startServer() {
   // Complete Game
   app.post('/api/games/:gameId/complete', (req: Request, res: Response) => {
     const { gameId } = req.params;
-    const game = games.get(gameId);
+    const game = resolveGame(gameId);
     if (!game) {
       res.status(404).json({ error: 'Game not found' });
       return;
     }
 
+    const gId = game.id;
     const now = new Date().toISOString();
     game.status = 'completed';
     game.updated_at = now;
 
-    const pList = players.get(gameId) || [];
+    const pList = players.get(gId) || [];
     pList.forEach((p) => {
       p.status = 'completed';
     });
 
     saveStoreToDisk();
-    broadcastGameUpdate(gameId);
+    broadcastGameUpdate(gId);
     res.json({ success: true });
   });
 
   // Reset Game to Lobby
   app.post('/api/games/:gameId/reset', (req: Request, res: Response) => {
     const { gameId } = req.params;
-    const game = games.get(gameId);
+    const game = resolveGame(gameId);
     if (!game) {
       res.status(404).json({ error: 'Game not found' });
       return;
     }
 
+    const gId = game.id;
     const now = new Date().toISOString();
     game.status = 'lobby';
     game.current_round = 0;
     game.updated_at = now;
 
-    rounds.set(gameId, []);
-    decisions.set(gameId, []);
+    rounds.set(gId, []);
+    decisions.set(gId, []);
 
-    const pList = players.get(gameId) || [];
+    const pList = players.get(gId) || [];
     pList.forEach((p) => {
       p.score = 0;
       p.status = 'waiting';
     });
 
     saveStoreToDisk();
-    broadcastGameUpdate(gameId);
+    broadcastGameUpdate(gId);
     res.json({ success: true });
   });
 
@@ -929,16 +991,17 @@ async function startServer() {
   app.post('/api/games/:gameId/simulated-player', (req: Request, res: Response) => {
     const { gameId } = req.params;
     const { name, avatar = '🤖' } = req.body || {};
-    const game = games.get(gameId);
+    const game = resolveGame(gameId);
     if (!game) {
       res.status(404).json({ error: 'Game not found' });
       return;
     }
 
-    const pList = players.get(gameId) || [];
+    const gId = game.id;
+    const pList = players.get(gId) || [];
     const botPlayer: Player = {
       id: 'bot_' + Math.random().toString(36).substring(2, 9),
-      game_id: gameId,
+      game_id: gId,
       user_id: 'bot_user_' + Math.random().toString(36).substring(2, 9),
       player_name: name || `Player ${pList.length + 1}`,
       score: 0,
@@ -947,10 +1010,10 @@ async function startServer() {
       joined_at: new Date().toISOString(),
     };
     pList.push(botPlayer);
-    players.set(gameId, pList);
+    players.set(gId, pList);
 
     saveStoreToDisk();
-    broadcastGameUpdate(gameId);
+    broadcastGameUpdate(gId);
     res.json(botPlayer);
   });
 
@@ -958,14 +1021,15 @@ async function startServer() {
   app.post('/api/games/:gameId/auto-bots', (req: Request, res: Response) => {
     const { gameId } = req.params;
     const { roundId } = req.body || {};
-    const game = games.get(gameId);
+    const game = resolveGame(gameId);
     if (!game) {
       res.status(404).json({ error: 'Game not found' });
       return;
     }
 
-    const pList = players.get(gameId) || [];
-    const dList = decisions.get(gameId) || [];
+    const gId = game.id;
+    const pList = players.get(gId) || [];
+    const dList = decisions.get(gId) || [];
     const now = new Date().toISOString();
 
     pList.forEach((p) => {
@@ -986,15 +1050,17 @@ async function startServer() {
       }
     });
 
-    decisions.set(gameId, dList);
+    decisions.set(gId, dList);
     saveStoreToDisk();
-    broadcastGameUpdate(gameId);
+    broadcastGameUpdate(gId);
     res.json({ success: true });
   });
 
   // Server-Sent Events (SSE) for Real-Time Cross-Device Sync
   app.get('/api/games/:gameId/stream', (req: Request, res: Response) => {
     const { gameId } = req.params;
+    const game = resolveGame(gameId);
+    const gId = game ? game.id : gameId;
 
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
@@ -1002,18 +1068,25 @@ async function startServer() {
     res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders();
 
-    if (!sseClients.has(gameId)) {
-      sseClients.set(gameId, new Set());
+    if (!sseClients.has(gId)) {
+      sseClients.set(gId, new Set());
     }
-    const clients = sseClients.get(gameId)!;
+    const clients = sseClients.get(gId)!;
     clients.add(res);
 
+    // Also register under requested param if different
+    if (gameId !== gId) {
+      if (!sseClients.has(gameId)) {
+        sseClients.set(gameId, new Set());
+      }
+      sseClients.get(gameId)!.add(res);
+    }
+
     // Send initial snapshot immediately
-    const game = games.get(gameId);
-    const pList = players.get(gameId) || [];
-    const rList = rounds.get(gameId) || [];
+    const pList = players.get(gId) || [];
+    const rList = rounds.get(gId) || [];
     const currentRound = game ? rList.find((r) => r.round_number === game.current_round) || null : null;
-    const dList = currentRound ? (decisions.get(gameId) || []).filter((d) => d.round_id === currentRound.id) : [];
+    const dList = currentRound ? (decisions.get(gId) || []).filter((d) => d.round_id === currentRound.id) : [];
 
     res.write(
       `data: ${JSON.stringify({
@@ -1038,6 +1111,9 @@ async function startServer() {
     req.on('close', () => {
       clearInterval(pingInterval);
       clients.delete(res);
+      if (gameId !== gId && sseClients.has(gameId)) {
+        sseClients.get(gameId)!.delete(res);
+      }
     });
   });
 
