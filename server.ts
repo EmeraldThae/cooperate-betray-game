@@ -313,17 +313,123 @@ function resolveGame(idOrCode: string): Game | undefined {
   return findGameByCode(idOrCode);
 }
 
+function getAllGameKeys(gameOrId: Game | string): string[] {
+  const keys = new Set<string>();
+  if (typeof gameOrId === 'string') {
+    const raw = cleanCodeString(gameOrId);
+    if (raw) {
+      keys.add(raw);
+      keys.add(raw.toLowerCase());
+      const suffix = extractCodeSuffix(raw);
+      if (suffix) {
+        keys.add('game_' + suffix.toLowerCase());
+        keys.add('game_tb' + suffix.toLowerCase());
+        keys.add(`TB-${suffix.toUpperCase()}`);
+        keys.add(suffix.toUpperCase());
+      }
+    }
+    const resolved = resolveGame(gameOrId);
+    if (resolved) {
+      keys.add(resolved.id);
+      keys.add(resolved.id.toLowerCase());
+      keys.add(resolved.game_code);
+      keys.add(resolved.game_code.toUpperCase());
+      const s = extractCodeSuffix(resolved.game_code);
+      if (s) {
+        keys.add('game_' + s.toLowerCase());
+        keys.add(`TB-${s.toUpperCase()}`);
+        keys.add(s.toUpperCase());
+      }
+    }
+  } else if (gameOrId) {
+    keys.add(gameOrId.id);
+    keys.add(gameOrId.id.toLowerCase());
+    keys.add(gameOrId.game_code);
+    keys.add(gameOrId.game_code.toUpperCase());
+    const s = extractCodeSuffix(gameOrId.game_code || gameOrId.id);
+    if (s) {
+      keys.add('game_' + s.toLowerCase());
+      keys.add(`TB-${s.toUpperCase()}`);
+      keys.add(s.toUpperCase());
+    }
+  }
+  return Array.from(keys);
+}
+
+function getPlayersForGame(gameIdOrCode: string): Player[] {
+  const resolved = resolveGame(gameIdOrCode);
+  const keys = getAllGameKeys(resolved || gameIdOrCode);
+  for (const k of keys) {
+    const list = players.get(k);
+    if (list && list.length > 0) return list;
+  }
+  for (const k of keys) {
+    if (players.has(k)) return players.get(k)!;
+  }
+  return [];
+}
+
+function setPlayersForGame(gameIdOrCode: string, pList: Player[]) {
+  const resolved = resolveGame(gameIdOrCode);
+  const keys = getAllGameKeys(resolved || gameIdOrCode);
+  for (const k of keys) {
+    players.set(k, pList);
+  }
+}
+
+function getRoundsForGame(gameIdOrCode: string): Round[] {
+  const resolved = resolveGame(gameIdOrCode);
+  const keys = getAllGameKeys(resolved || gameIdOrCode);
+  for (const k of keys) {
+    const list = rounds.get(k);
+    if (list && list.length > 0) return list;
+  }
+  for (const k of keys) {
+    if (rounds.has(k)) return rounds.get(k)!;
+  }
+  return [];
+}
+
+function setRoundsForGame(gameIdOrCode: string, rList: Round[]) {
+  const resolved = resolveGame(gameIdOrCode);
+  const keys = getAllGameKeys(resolved || gameIdOrCode);
+  for (const k of keys) {
+    rounds.set(k, rList);
+  }
+}
+
+function getDecisionsForGame(gameIdOrCode: string): Decision[] {
+  const resolved = resolveGame(gameIdOrCode);
+  const keys = getAllGameKeys(resolved || gameIdOrCode);
+  for (const k of keys) {
+    const list = decisions.get(k);
+    if (list && list.length > 0) return list;
+  }
+  for (const k of keys) {
+    if (decisions.has(k)) return decisions.get(k)!;
+  }
+  return [];
+}
+
+function setDecisionsForGame(gameIdOrCode: string, dList: Decision[]) {
+  const resolved = resolveGame(gameIdOrCode);
+  const keys = getAllGameKeys(resolved || gameIdOrCode);
+  for (const k of keys) {
+    decisions.set(k, dList);
+  }
+}
+
 function broadcastGameUpdate(gameId: string) {
   const resolved = resolveGame(gameId);
   const targetId = resolved ? resolved.id : gameId;
 
   const game = resolved || games.get(targetId);
-  const pList = players.get(targetId) || [];
-  const rList = rounds.get(targetId) || [];
+  const pList = getPlayersForGame(targetId);
+  const rList = getRoundsForGame(targetId);
   const currentRound = game ? rList.find((r) => r.round_number === game.current_round) || null : null;
-  const dList = currentRound ? (decisions.get(targetId) || []).filter((d) => d.round_id === currentRound.id) : [];
+  const dList = currentRound ? (getDecisionsForGame(targetId) || []).filter((d) => d.round_id === currentRound.id) : [];
 
-  const allDList = decisions.get(targetId) || [];
+  const allDList = getDecisionsForGame(targetId);
 
   const payload = JSON.stringify({
     type: 'UPDATE',
@@ -336,7 +442,8 @@ function broadcastGameUpdate(gameId: string) {
     timestamp: Date.now(),
   });
 
-  const clientSets = [sseClients.get(targetId), sseClients.get(gameId)];
+  const allKeys = getAllGameKeys(game || targetId);
+  const clientSets = allKeys.map((k) => sseClients.get(k)).filter(Boolean) as Set<Response>[];
   const sent = new Set<Response>();
 
   clientSets.forEach((set) => {
@@ -621,7 +728,7 @@ async function startServer() {
         return;
       }
 
-      const currentPlayers = players.get(targetGame.id) || [];
+      const currentPlayers = getPlayersForGame(targetGame.id);
       const userId = reqUserId || 'user_' + Math.random().toString(36).substring(2, 9);
       let trimmedName = String(playerName).trim();
 
@@ -659,8 +766,9 @@ async function startServer() {
           last_seen_at: new Date().toISOString(),
         };
         currentPlayers.push(playerObj);
-        players.set(targetGame.id, currentPlayers);
       }
+
+      setPlayersForGame(targetGame.id, currentPlayers);
 
       try {
         saveStoreToDisk();
@@ -692,12 +800,12 @@ async function startServer() {
     }
 
     const gId = game.id;
-    const pList = players.get(gId) || [];
-    const rList = rounds.get(gId) || [];
+    const pList = getPlayersForGame(gId);
+    const rList = getRoundsForGame(gId);
     const currentRound = rList.find((r) => r.round_number === game.current_round) || null;
-    const dList = currentRound ? (decisions.get(gId) || []).filter((d) => d.round_id === currentRound.id) : [];
+    const dList = currentRound ? (getDecisionsForGame(gId) || []).filter((d) => d.round_id === currentRound.id) : [];
 
-    const allDList = decisions.get(gId) || [];
+    const allDList = getDecisionsForGame(gId);
 
     res.json({
       game,
@@ -721,7 +829,7 @@ async function startServer() {
     }
 
     const gId = game.id;
-    const pList = players.get(gId) || [];
+    const pList = getPlayersForGame(gId);
     const rNum = Number(roundNumber) || (game.current_round || 1);
     
     let pairings: PlayerPairing[] = [];
@@ -734,11 +842,12 @@ async function startServer() {
     game.current_pairings = pairings;
     game.updated_at = new Date().toISOString();
 
-    const rList = rounds.get(gId) || [];
+    const rList = getRoundsForGame(gId);
     const currentRound = rList.find((r) => r.round_number === rNum);
     if (currentRound) {
       currentRound.pairings = pairings;
     }
+    setRoundsForGame(gId, rList);
 
     saveStoreToDisk();
     broadcastGameUpdate(gId);
@@ -766,10 +875,11 @@ async function startServer() {
     game.updated_at = now;
 
     // Reset players to playing
-    const pList = players.get(gId) || [];
+    const pList = getPlayersForGame(gId);
     pList.forEach((p) => {
       p.status = 'playing';
     });
+    setPlayersForGame(gId, pList);
 
     // Ensure 2-player random pairings for this round
     let rPairings = game.current_pairings;
@@ -778,7 +888,7 @@ async function startServer() {
       game.current_pairings = rPairings;
     }
 
-    const rList = rounds.get(gId) || [];
+    const rList = getRoundsForGame(gId);
     let round = rList.find((r) => r.round_number === rNum);
     if (!round) {
       round = {
@@ -797,7 +907,7 @@ async function startServer() {
       round.revealed_at = undefined;
       round.ended_at = undefined;
     }
-    rounds.set(gId, rList);
+    setRoundsForGame(gId, rList);
 
     saveStoreToDisk();
     broadcastGameUpdate(gId);
@@ -816,7 +926,7 @@ async function startServer() {
     }
 
     const gId = game.id;
-    const dList = decisions.get(gId) || [];
+    const dList = getDecisionsForGame(gId);
     let existing = dList.find((d) => d.round_id === roundId && d.player_id === playerId);
     const now = new Date().toISOString();
 
@@ -834,13 +944,14 @@ async function startServer() {
       };
       dList.push(existing);
     }
-    decisions.set(gId, dList);
+    setDecisionsForGame(gId, dList);
 
     // Mark player as submitted
-    const pList = players.get(gId) || [];
+    const pList = getPlayersForGame(gId);
     const player = pList.find((p) => p.id === playerId);
     if (player) {
       player.status = 'submitted';
+      setPlayersForGame(gId, pList);
     }
 
     saveStoreToDisk();
@@ -860,15 +971,15 @@ async function startServer() {
     }
 
     const gId = game.id;
-    const rList = rounds.get(gId) || [];
+    const rList = getRoundsForGame(gId);
     const round = rList.find((r) => r.id === roundId);
     if (!round) {
       res.status(404).json({ error: 'Round not found' });
       return;
     }
 
-    const pList = players.get(gId) || [];
-    const dList = decisions.get(gId) || [];
+    const pList = getPlayersForGame(gId);
+    const dList = getDecisionsForGame(gId);
     const now = new Date().toISOString();
 
     // Auto-fill missing decisions with no_decision
@@ -970,7 +1081,10 @@ async function startServer() {
     game.current_pairings = activePairings;
     game.updated_at = now;
 
-    decisions.set(gId, dList);
+    setPlayersForGame(gId, pList);
+    setRoundsForGame(gId, rList);
+    setDecisionsForGame(gId, dList);
+
     saveStoreToDisk();
     broadcastGameUpdate(gId);
 
@@ -991,10 +1105,11 @@ async function startServer() {
     game.status = 'completed';
     game.updated_at = now;
 
-    const pList = players.get(gId) || [];
+    const pList = getPlayersForGame(gId);
     pList.forEach((p) => {
       p.status = 'completed';
     });
+    setPlayersForGame(gId, pList);
 
     saveStoreToDisk();
     broadcastGameUpdate(gId);
@@ -1016,14 +1131,15 @@ async function startServer() {
     game.current_round = 0;
     game.updated_at = now;
 
-    rounds.set(gId, []);
-    decisions.set(gId, []);
+    setRoundsForGame(gId, []);
+    setDecisionsForGame(gId, []);
 
-    const pList = players.get(gId) || [];
+    const pList = getPlayersForGame(gId);
     pList.forEach((p) => {
       p.score = 0;
       p.status = 'waiting';
     });
+    setPlayersForGame(gId, pList);
 
     saveStoreToDisk();
     broadcastGameUpdate(gId);
@@ -1041,7 +1157,7 @@ async function startServer() {
     }
 
     const gId = game.id;
-    const pList = players.get(gId) || [];
+    const pList = getPlayersForGame(gId);
     const botPlayer: Player = {
       id: 'bot_' + Math.random().toString(36).substring(2, 9),
       game_id: gId,
@@ -1053,7 +1169,7 @@ async function startServer() {
       joined_at: new Date().toISOString(),
     };
     pList.push(botPlayer);
-    players.set(gId, pList);
+    setPlayersForGame(gId, pList);
 
     saveStoreToDisk();
     broadcastGameUpdate(gId);
@@ -1071,8 +1187,8 @@ async function startServer() {
     }
 
     const gId = game.id;
-    const pList = players.get(gId) || [];
-    const dList = decisions.get(gId) || [];
+    const pList = getPlayersForGame(gId);
+    const dList = getDecisionsForGame(gId);
     const now = new Date().toISOString();
 
     pList.forEach((p) => {
@@ -1093,7 +1209,8 @@ async function startServer() {
       }
     });
 
-    decisions.set(gId, dList);
+    setPlayersForGame(gId, pList);
+    setDecisionsForGame(gId, dList);
     saveStoreToDisk();
     broadcastGameUpdate(gId);
     res.json({ success: true });
@@ -1111,25 +1228,19 @@ async function startServer() {
     res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders();
 
-    if (!sseClients.has(gId)) {
-      sseClients.set(gId, new Set());
-    }
-    const clients = sseClients.get(gId)!;
-    clients.add(res);
-
-    // Also register under requested param if different
-    if (gameId !== gId) {
-      if (!sseClients.has(gameId)) {
-        sseClients.set(gameId, new Set());
+    const allKeys = getAllGameKeys(game || gId);
+    allKeys.forEach((key) => {
+      if (!sseClients.has(key)) {
+        sseClients.set(key, new Set());
       }
-      sseClients.get(gameId)!.add(res);
-    }
+      sseClients.get(key)!.add(res);
+    });
 
     // Send initial snapshot immediately
-    const pList = players.get(gId) || [];
-    const rList = rounds.get(gId) || [];
+    const pList = getPlayersForGame(gId);
+    const rList = getRoundsForGame(gId);
     const currentRound = game ? rList.find((r) => r.round_number === game.current_round) || null : null;
-    const dList = currentRound ? (decisions.get(gId) || []).filter((d) => d.round_id === currentRound.id) : [];
+    const dList = currentRound ? (getDecisionsForGame(gId) || []).filter((d) => d.round_id === currentRound.id) : [];
 
     res.write(
       `data: ${JSON.stringify({
@@ -1153,10 +1264,11 @@ async function startServer() {
 
     req.on('close', () => {
       clearInterval(pingInterval);
-      clients.delete(res);
-      if (gameId !== gId && sseClients.has(gameId)) {
-        sseClients.get(gameId)!.delete(res);
-      }
+      allKeys.forEach((key) => {
+        if (sseClients.has(key)) {
+          sseClients.get(key)!.delete(res);
+        }
+      });
     });
   });
 
