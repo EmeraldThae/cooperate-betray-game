@@ -54,15 +54,13 @@ export const Lobby: React.FC<LobbyProps> = ({
   const isHost = role === 'host';
   const currentPlayer = players?.find((p) => p && p.id === currentPlayerId);
 
-  // Keep game continuously registered and active on central server
+  // Ensure latest room state and players are fetched on lobby load
   useEffect(() => {
     if (!game || !game.id) return;
-    GameService.syncGame(game, players).catch(() => {});
-    const interval = setInterval(() => {
-      GameService.syncGame(game, players).catch(() => {});
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [game, players]);
+    onRefresh?.();
+    // Keep game active on server without overwriting player roster
+    GameService.syncGame(game).catch(() => {});
+  }, [game?.id]);
 
   if (!game) {
     return (

@@ -527,7 +527,14 @@ async function startServer() {
 
         saveStoreToDisk();
         console.log(`[Game Server] Synced new game from client: ${registeredGame.game_code} (ID: ${registeredGame.id})`);
-        res.json({ success: true, registered: true, game: registeredGame });
+        res.json({
+          success: true,
+          registered: true,
+          game: registeredGame,
+          players: players.get(targetId) || [],
+          rounds: rounds.get(targetId) || [],
+          decisions: decisions.get(targetId) || [],
+        });
       } else {
         // Update existing game
         existing.status = game.status || existing.status;
@@ -536,17 +543,53 @@ async function startServer() {
         if (game.total_rounds) existing.total_rounds = game.total_rounds;
         if (game.decision_time_seconds) existing.decision_time_seconds = game.decision_time_seconds;
         existing.updated_at = new Date().toISOString();
-        if (pList && Array.isArray(pList)) {
-          players.set(existing.id, pList);
+
+        // Merge players without deleting server-registered players
+        const existingPlayers = players.get(existing.id) || [];
+        if (pList && Array.isArray(pList) && pList.length > 0) {
+          const pMap = new Map<string, Player>();
+          existingPlayers.forEach((p) => pMap.set(p.id, p));
+          pList.forEach((p) => {
+            if (p && p.id) {
+              if (pMap.has(p.id)) {
+                pMap.set(p.id, { ...pMap.get(p.id)!, ...p });
+              } else {
+                pMap.set(p.id, p);
+              }
+            }
+          });
+          players.set(existing.id, Array.from(pMap.values()));
         }
-        if (rList && Array.isArray(rList)) {
-          rounds.set(existing.id, rList);
+
+        if (rList && Array.isArray(rList) && rList.length > 0) {
+          const existingRounds = rounds.get(existing.id) || [];
+          const rMap = new Map<string, Round>();
+          existingRounds.forEach((r) => rMap.set(r.id, r));
+          rList.forEach((r) => {
+            if (r && r.id) rMap.set(r.id, r);
+          });
+          rounds.set(existing.id, Array.from(rMap.values()));
         }
-        if (dList && Array.isArray(dList)) {
-          decisions.set(existing.id, dList);
+
+        if (dList && Array.isArray(dList) && dList.length > 0) {
+          const existingDecisions = decisions.get(existing.id) || [];
+          const dMap = new Map<string, Decision>();
+          existingDecisions.forEach((d) => dMap.set(d.id, d));
+          dList.forEach((d) => {
+            if (d && d.id) dMap.set(d.id, d);
+          });
+          decisions.set(existing.id, Array.from(dMap.values()));
         }
+
         saveStoreToDisk();
-        res.json({ success: true, registered: false, game: existing });
+        res.json({
+          success: true,
+          registered: false,
+          game: existing,
+          players: players.get(existing.id) || [],
+          rounds: rounds.get(existing.id) || [],
+          decisions: decisions.get(existing.id) || [],
+        });
       }
     } catch (err: any) {
       console.error('[Game Server] Sync error:', err);

@@ -25,8 +25,17 @@ export const PlayerList: React.FC<PlayerListProps> = ({
         <span>Round Status / Score</span>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-        {players.map((player, index) => {
+      {players.length === 0 ? (
+        <div className="p-8 rounded-2xl bg-slate-950/60 border border-dashed border-slate-800 text-center space-y-2">
+          <UserCheck className="w-8 h-8 text-slate-600 mx-auto" />
+          <div className="text-sm font-semibold text-slate-300">Waiting for participants to join...</div>
+          <p className="text-xs text-slate-500 max-w-sm mx-auto">
+            Players who enter the Room Code or scan the QR Code on their phone will automatically appear in this list.
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          {players.map((player, index) => {
           const isMe = player.id === currentPlayerId;
           const playerDec = decisionMap.get(player.id);
           const hasSubmitted = player.status === 'submitted' || Boolean(playerDec);
@@ -105,7 +114,8 @@ export const PlayerList: React.FC<PlayerListProps> = ({
             </div>
           );
         })}
-      </div>
+        </div>
+      )}
     </div>
   );
 };

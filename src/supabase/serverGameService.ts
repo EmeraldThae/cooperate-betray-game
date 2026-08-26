@@ -353,27 +353,30 @@ export class ServerGameService {
     let isCleanedUp = false;
 
     const handlePayload = (data: any) => {
-      if (!data) return;
+      if (!data || isCleanedUp) return;
       if (data.game) callbacks.onGameUpdate(data.game);
-      if (data.players) callbacks.onPlayersUpdate(data.players);
+      if (data.players && Array.isArray(data.players)) callbacks.onPlayersUpdate(data.players);
       if (data.currentRound) callbacks.onRoundUpdate(data.currentRound);
-      if (data.decisions) callbacks.onDecisionsUpdate(data.decisions);
+      if (data.decisions && Array.isArray(data.decisions)) callbacks.onDecisionsUpdate(data.decisions);
     };
 
-    // Polling function for fallback or mobile background wake
+    // Polling function for fallback, immediate sync, and background wake
     const fetchPoll = async () => {
       if (isCleanedUp) return;
       try {
         const details = await ServerGameService.getGameDetails(gameId);
         if (isCleanedUp) return;
-        callbacks.onGameUpdate(details.game);
-        callbacks.onPlayersUpdate(details.players);
+        if (details.game) callbacks.onGameUpdate(details.game);
+        if (details.players && Array.isArray(details.players)) callbacks.onPlayersUpdate(details.players);
         if (details.currentRound) callbacks.onRoundUpdate(details.currentRound);
-        callbacks.onDecisionsUpdate(details.decisions);
+        if (details.decisions && Array.isArray(details.decisions)) callbacks.onDecisionsUpdate(details.decisions);
       } catch {
         // Silently retry
       }
     };
+
+    // Immediately trigger initial poll for instant UI population
+    fetchPoll();
 
     // Attempt Server-Sent Events connection
     if (typeof window !== 'undefined' && 'EventSource' in window) {
@@ -398,11 +401,8 @@ export class ServerGameService {
       }
     }
 
-    // Also run an interval poll every 2.5 seconds to guarantee 100% sync reliability across all devices
-    pollInterval = setInterval(fetchPoll, 2500);
-
-    // Also register mock subscription in case this game runs locally
-    const unsubMock = MockGameService.subscribeToGame(gameId, callbacks);
+    // Fast interval poll every 1.5 seconds to guarantee 100% sync reliability across all devices
+    pollInterval = setInterval(fetchPoll, 1500);
 
     return () => {
       isCleanedUp = true;
@@ -413,7 +413,6 @@ export class ServerGameService {
       if (pollInterval) {
         clearInterval(pollInterval);
       }
-      unsubMock();
     };
   }
 }
